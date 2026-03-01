@@ -1,0 +1,52 @@
+{
+  "Catalog": {
+    "Items": [
+      {
+        "Key": "AdjustTaxRate",
+        "DisplayName": "调整税率",
+        "Category": "Finance",
+        "Enabled": true,
+        "ParamKind": "Float",
+        "MinFloat": 0.05,
+        "MaxFloat": 0.30,
+        "DefaultFloat": 0.16,
+        "Description": "试行小幅加税，观察一季后再议。"
+      },
+      {
+        "Key": "RequestGrainRelief",
+        "DisplayName": "开仓赈济",
+        "Category": "Relief",
+        "Enabled": true,
+        "ParamKind": "None",
+        "Description": "拨粮赈济以稳民心。"
+      },
+      {
+        "Key": "IncreaseMilitaryBudget",
+        "DisplayName": "增加军费",
+        "Category": "Military",
+        "Enabled": true,
+        "ParamKind": "Int",
+        "MinInt": 0,
+        "MaxInt": 500,
+        "DefaultInt": 120,
+        "Description": "提高军费以固边防。"
+      },
+      {
+        "Key": "LaunchInspection",
+        "DisplayName": "派员巡查",
+        "Category": "Administration",
+        "Enabled": true,
+        "ParamKind": "None",
+        "Description": "整肃吏治，稳定舆情。"
+      },
+      {
+        "Key": "BuildIrrigation",
+        "DisplayName": "兴修水利",
+        "Category": "Construction",
+        "Enabled": true,
+        "ParamKind": "None",
+        "Description": "投入工程以增仓储与产出。"
+      }
+    ]
+  }
+}
