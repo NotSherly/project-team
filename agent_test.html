@@ -1,0 +1,1023 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>君主模拟器 - Demo可视化</title>
+    <link rel="stylesheet" href="../../css/style.css">
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: linear-gradient(135deg, #1a3c27 0%, #0d261a 100%);
+            min-height: 100vh;
+            color: #d4af37;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+
+        .header {
+            text-align: center;
+            padding: 30px 0;
+            border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+            margin-bottom: 30px;
+        }
+
+        .header h1 {
+            font-size: 2.5em;
+            margin-bottom: 10px;
+            text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.5);
+        }
+
+        .header p {
+            font-size: 1.1em;
+            opacity: 0.8;
+        }
+
+        .grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
+            gap: 20px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: rgba(26, 60, 39, 0.8);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            padding: 20px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.3);
+        }
+
+        .card h2 {
+            font-size: 1.3em;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+            color: #d4af37;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
+        .status-indicator .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            margin-right: 10px;
+        }
+
+        .status-indicator .dot.active {
+            background: #4caf50;
+            box-shadow: 0 0 10px #4caf50;
+        }
+
+        .status-indicator .dot.inactive {
+            background: #f44336;
+        }
+
+        .btn {
+            display: inline-block;
+            padding: 10px 20px;
+            background: rgba(212, 175, 55, 0.2);
+            border: 1px solid rgba(212, 175, 55, 0.5);
+            border-radius: 5px;
+            color: #d4af37;
+            cursor: pointer;
+            margin: 5px;
+            transition: all 0.3s ease;
+        }
+
+        .btn:hover {
+            background: rgba(212, 175, 55, 0.4);
+            box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .input-group {
+            margin-bottom: 15px;
+        }
+
+        .input-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+
+        .input-group input,
+        .input-group select,
+        .input-group textarea {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 5px;
+            color: #d4af37;
+            font-family: inherit;
+        }
+
+        .input-group textarea {
+            resize: vertical;
+            min-height: 100px;
+        }
+
+        .output-area {
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 5px;
+            padding: 15px;
+            margin-top: 15px;
+            max-height: 300px;
+            overflow-y: auto;
+        }
+
+        .output-area pre {
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            font-family: inherit;
+        }
+
+        .log-console {
+            background: rgba(0, 0, 0, 0.5);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 5px;
+            padding: 15px;
+            height: 400px;
+            overflow-y: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 5px;
+            border-left: 3px solid transparent;
+            padding-left: 10px;
+        }
+
+        .log-entry.info {
+            border-left-color: #2196f3;
+        }
+
+        .log-entry.success {
+            border-left-color: #4caf50;
+        }
+
+        .log-entry.warning {
+            border-left-color: #ff9800;
+        }
+
+        .log-entry.error {
+            border-left-color: #f44336;
+        }
+
+        .timestamp {
+            color: rgba(212, 175, 55, 0.6);
+            margin-right: 10px;
+        }
+
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid rgba(212, 175, 55, 0.3);
+            border-top-color: #d4af37;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+
+        .world-state {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(100px, 1fr));
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        .state-item {
+            text-align: center;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border-radius: 5px;
+            border: 1px solid rgba(212, 175, 55, 0.3);
+        }
+
+        .state-item .label {
+            font-size: 0.9em;
+            opacity: 0.8;
+            margin-bottom: 5px;
+        }
+
+        .state-item .value {
+            font-size: 1.2em;
+            font-weight: bold;
+        }
+
+        .choice-btn {
+            display: block;
+            width: 100%;
+            padding: 10px;
+            margin: 5px 0;
+            background: rgba(212, 175, 55, 0.2);
+            border: 1px solid rgba(212, 175, 55, 0.5);
+            border-radius: 5px;
+            color: #d4af37;
+            cursor: pointer;
+            text-align: left;
+            transition: all 0.3s ease;
+        }
+
+        .choice-btn:hover {
+            background: rgba(212, 175, 55, 0.4);
+            box-shadow: 0 2px 8px rgba(212, 175, 55, 0.3);
+        }
+
+        .custom-command {
+            margin-top: 15px;
+        }
+
+        .custom-command textarea {
+            width: 100%;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 5px;
+            color: #d4af37;
+            font-family: inherit;
+            resize: vertical;
+            min-height: 100px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>👑 君主模拟器 - Demo可视化</h1>
+            <p>体验AI驱动的君主决策系统</p>
+        </div>
+
+        <div class="grid">
+            <!-- 游戏状态卡片 -->
+            <div class="card">
+                <h2>📊 游戏状态</h2>
+                <div class="world-state">
+                    <div class="state-item">
+                        <div class="label">时间</div>
+                        <div class="value" id="timeValue">--</div>
+                    </div>
+                    <div class="state-item">
+                        <div class="label">银两</div>
+                        <div class="value" id="silverValue">--</div>
+                    </div>
+                    <div class="state-item">
+                        <div class="label">粮食</div>
+                        <div class="value" id="grainValue">--</div>
+                    </div>
+                    <div class="state-item">
+                        <div class="label">民心</div>
+                        <div class="value" id="popularityValue">--</div>
+                    </div>
+                </div>
+                <div style="margin-top: 20px;">
+                    <button class="btn" onclick="startGame()">开始游戏</button>
+                    <button class="btn" onclick="nextTurn()">下一回合</button>
+                    <button class="btn" onclick="resetGame()">重置游戏</button>
+                </div>
+            </div>
+
+            <!-- 奏折卡片 -->
+            <div class="card">
+                <h2>📜 吏部尚书奏折</h2>
+                <div class="output-area">
+                    <pre id="reportOutput">等待游戏开始...</pre>
+                </div>
+            </div>
+
+            <!-- 剧情旁白卡片 -->
+            <div class="card">
+                <h2>🎭 剧情旁白</h2>
+                <div class="output-area">
+                    <pre id="narrativeOutput">等待游戏开始...</pre>
+                </div>
+            </div>
+
+            <!-- 玩家选择卡片 -->
+            <div class="card">
+                <h2>🎯 玩家选择</h2>
+                <div id="choiceContainer">
+                    <p>等待游戏开始...</p>
+                </div>
+                <div class="custom-command" style="display: none;">
+                    <textarea id="customCommand" placeholder="输入自定义命令..."></textarea>
+                    <button class="btn" onclick="submitCustomCommand()">提交命令</button>
+                </div>
+            </div>
+        </div>
+
+        <!-- 日志控制台 -->
+        <div class="card">
+            <h2>📜 日志控制台</h2>
+            <div style="margin-bottom: 10px;">
+                <button class="btn" onclick="clearLog()">清空日志</button>
+                <button class="btn" onclick="exportLog()">导出日志</button>
+            </div>
+            <div id="logConsole" class="log-console"></div>
+        </div>
+    </div>
+
+    <script>
+        // 全局变量
+        let gameState = {
+            time: '第1年 2月',
+            银两: 105,
+            粮食: 15,
+            民心: 60
+        };
+        let currentNpcData = null;
+        let isGameRunning = false;
+
+        // 模拟游戏引擎
+        class GameEngine {
+            constructor() {
+                this.worldState = gameState;
+                this.npcAgent = new NpcAgent();
+                this.narrativeAgent = new NarrativeAgent();
+            }
+
+            async runTurn() {
+                // 更新世界状态
+                this.updateWorldState();
+                
+                // 检查事件
+                const event = this.checkEvents();
+                log(`事件: ${event}`, 'info');
+                
+                // NPC Agent观察世界
+                this.npcAgent.observeWorld(this.worldState);
+                
+                // NPC Agent生成奏折
+                const npcData = await this.npcAgent.act();
+                currentNpcData = npcData;
+                
+                // 叙事Agent生成剧情
+                const narrative = await this.narrativeAgent.generateNarrative(this.worldState, npcData);
+                
+                return { npcData, narrative };
+            }
+
+            updateWorldState() {
+                // 简单的世界状态更新
+                const timeParts = this.worldState.time.match(/第(\d+)年 (\d+)月/);
+                if (timeParts) {
+                    let year = parseInt(timeParts[1]);
+                    let month = parseInt(timeParts[2]);
+                    month += 1;
+                    if (month > 12) {
+                        month = 1;
+                        year += 1;
+                    }
+                    this.worldState.time = `第${year}年 ${month}月`;
+                }
+                
+                // 随机变化
+                this.worldState.银两 += Math.floor(Math.random() * 10) - 5;
+                this.worldState.粮食 += Math.floor(Math.random() * 10) - 7;
+                this.worldState.民心 += Math.floor(Math.random() * 5) - 2;
+                
+                // 确保数值不小于0
+                this.worldState.银两 = Math.max(0, this.worldState.银两);
+                this.worldState.粮食 = Math.max(0, this.worldState.粮食);
+                this.worldState.民心 = Math.max(0, this.worldState.民心);
+            }
+
+            checkEvents() {
+                if (this.worldState.粮食 < 30) {
+                    return '粮荒';
+                } else if (this.worldState.民心 < 40) {
+                    return '民变';
+                } else if (this.worldState.银两 < 50) {
+                    return '财政危机';
+                } else {
+                    return '国泰民安';
+                }
+            }
+
+            extractValuesFromText(text) {
+                // 尝试从文本中提取数值
+                const changes = { 银两: 0, 粮食: 0, 民心: 0 };
+                
+                // 提取银两变化
+                const silverMatch = text.match(/银两[：:]([-+]?\\d+)/);
+                if (silverMatch) {
+                    changes.银两 = parseInt(silverMatch[1]);
+                }
+                
+                // 提取粮食变化
+                const grainMatch = text.match(/粮食[：:]([-+]?\\d+)/);
+                if (grainMatch) {
+                    changes.粮食 = parseInt(grainMatch[1]);
+                }
+                
+                // 提取民心变化
+                const popularityMatch = text.match(/民心[：:]([-+]?\\d+)/);
+                if (popularityMatch) {
+                    changes.民心 = parseInt(popularityMatch[1]);
+                }
+                
+                return changes;
+            }
+
+            async updateWorldStateFromChoice(choice, option) {
+                // 保存this引用
+                const self = this;
+                
+                // 生成一个详细的prompt，让AI来决定世界状态的变化
+                const prompt = `陛下选择了以下决策："${option}"。作为吏部尚书，请你：
+1. 分析此决策的影响
+2. 预测执行后对国家各方面的具体影响
+3. 提供具体的数值变化（银两、粮食、民心）
+
+当前国家状态：
+- 时间：${this.worldState.time}
+- 银两：${this.worldState.银两}
+- 粮食：${this.worldState.粮食}
+- 民心：${this.worldState.民心}
+
+请以JSON格式返回数值变化，例如：
+{"银两": -10, "粮食": 20, "民心": 5}
+
+重要要求：请确保返回有效的JSON格式，并且只包含数值变化，不要包含其他内容。`;
+                
+                try {
+                    const aiService = new AIService();
+                    const aiResponse = await aiService.processRequest({
+                        type: 'agent_dialogue',
+                        content: prompt,
+                        systemPrompt: '你是吏部尚书，正在向皇帝上奏。请根据用户提供的内容生成一份正式的奏折，严格依据信息，体现忠心和直谏。',
+                        constraints: {
+                            maxTokens: 500,
+                            temperature: 0.7
+                        }
+                    });
+                    
+                    log('AI分析结果: ' + aiResponse, 'info');
+                    
+                    // 尝试解析JSON
+                    let changes = { 银两: 0, 粮食: 0, 民心: 0 };
+                    
+                    // 尝试从响应中提取JSON
+                    const jsonMatch = aiResponse.match(/\{[\s\S]*\}/);
+                    if (jsonMatch) {
+                        try {
+                            changes = JSON.parse(jsonMatch[0]);
+                        } catch (parseError) {
+                            log(`JSON解析失败: ${parseError.message}，尝试提取数值`, 'warning');
+                            // 尝试手动提取数值
+                            changes = self.extractValuesFromText(aiResponse);
+                        }
+                    } else {
+                        log('未找到JSON格式，尝试提取数值', 'warning');
+                        // 尝试手动提取数值
+                        changes = self.extractValuesFromText(aiResponse);
+                    }
+                    
+                    // 应用变化
+                    if (changes.银两 !== undefined) {
+                        self.worldState.银两 += changes.银两;
+                        log(`银两变化: ${changes.银两 > 0 ? '+' : ''}${changes.银两}`, 'info');
+                    }
+                    if (changes.粮食 !== undefined) {
+                        self.worldState.粮食 += changes.粮食;
+                        log(`粮食变化: ${changes.粮食 > 0 ? '+' : ''}${changes.粮食}`, 'info');
+                    }
+                    if (changes.民心 !== undefined) {
+                        self.worldState.民心 += changes.民心;
+                        log(`民心变化: ${changes.民心 > 0 ? '+' : ''}${changes.民心}`, 'info');
+                    }
+                    
+                    log('成功应用AI返回的数值变化', 'success');
+                } catch (error) {
+                    log(`处理AI响应时出错: ${error.message}`, 'error');
+                    // 出错时使用默认值0，确保使用AI逻辑
+                    log('使用默认数值变化: 0', 'info');
+                }
+                
+                // 确保数值不小于0
+                this.worldState.银两 = Math.max(0, this.worldState.银两);
+                this.worldState.粮食 = Math.max(0, this.worldState.粮食);
+                this.worldState.民心 = Math.max(0, this.worldState.民心);
+            }
+        }
+
+        // NPC Agent
+        class NpcAgent {
+            constructor() {
+                this.identity = "吏部尚书";
+                this.personality = "忠心耿耿，直言敢谏";
+                this.goals = ["维护朝廷稳定", "保障民生"];
+                this.memory = [];
+                this.aiService = new AIService();
+            }
+            
+            observeWorld(world) {
+                this.currentWorld = world;
+                return world;
+            }
+            
+            think() {
+                const world = this.currentWorld;
+                const randomFactor = Math.random();
+
+                let issue = "";
+
+                // 1. 粮食危机
+                if (world.粮食 < 30) {
+                    if (randomFactor < 0.7) {
+                        issue = `粮食储备仅余${world.粮食}石，民有饥色，恐生粮荒之变。`;
+                    } else {
+                        issue = `粮食虽少，但更令人忧心者，乃是粮仓官吏有盗卖之嫌，请陛下彻查。`;
+                    }
+                }
+                // 2. 民心不稳
+                else if (world.民心 < 40) {
+                    if (randomFactor < 0.6) {
+                        issue = `民心不稳，仅有${world.民心}，若不及时安抚，恐生民变。`;
+                    } else {
+                        issue = `近日流言四起，民心离散，或有奸人煽动，请陛下圣裁。`;
+                    }
+                }
+                // 3. 银两不足
+                else if (world.银两 < 50) {
+                    if (randomFactor < 0.5) {
+                        issue = `国库银两仅余${world.银两}万两，诸项开支难以为继，请陛下节用。`;
+                    } else {
+                        issue = `银两短缺，而边关军饷未发，恐军心生变，请陛下速决。`;
+                    }
+                }
+                // 4. 正常或盛世状态
+                else {
+                    const season = this.getSeason(world.time);
+                    const normalEvents = [
+                        `国泰民安，粮食充足，民心稳定，实乃盛世之象。`,
+                        `近来风调雨顺，百姓安乐，臣恭祝陛下圣明。`,
+                        `有祥瑞现于京郊，或为上天嘉许陛下之德。`,
+                        `边关无事，朝政清明，唯望陛下勤勉不怠。`,
+                        `时值${season}，农桑兴旺，税收有望增加。`
+                    ];
+                    const index = Math.floor(randomFactor * normalEvents.length);
+                    issue = normalEvents[index];
+                }
+
+                return issue;
+            }
+
+            getSeason(timeStr) {
+                if (timeStr.includes('春')) return '春季';
+                if (timeStr.includes('夏')) return '夏季';
+                if (timeStr.includes('秋')) return '秋季';
+                if (timeStr.includes('冬')) return '冬季';
+                return '此时';
+            }
+            
+            async act() {
+                const 奏折要点 = this.think();
+                const prompt = `你是吏部尚书，忠心耿耿，直言敢谏。请根据以下要点，生成一份正式的奏折，并在奏折末尾提供3个不同的决策选项，每个选项用数字标记，格式为：
+1. 选项1内容
+2. 选项2内容
+3. 选项3内容
+
+要求：
+1. 奏折格式规范，包含称谓、正文、结尾敬语。
+2. 正文要详细阐述问题，可适当引用历史典故或经典语句，但核心内容必须基于要点。
+3. 体现吏部尚书的性格：忠心、直谏，语气恳切。
+4. 不要虚构要点之外的具体数据或事件。
+5. 选项要具体可行，涵盖不同的决策方向。
+
+要点：${奏折要点}
+
+请生成奏折和选项：`;
+                
+                const 生成的内容 = await this.aiService.processRequest({
+                    type: 'agent_dialogue',
+                    content: prompt,
+                    systemPrompt: "你是吏部尚书，正在向皇帝上奏。请根据用户提供的内容生成一份正式的奏折，严格依据信息，体现忠心和直谏。",
+                    constraints: {
+                        maxTokens: 1000,
+                        temperature: 0.7
+                    }
+                });
+                
+                this.memory.push({
+                    timestamp: new Date().toISOString(),
+                    content: 生成的内容
+                });
+                
+                const { report, options } = this.extractReportAndOptions(生成的内容);
+                
+                return {
+                    report: report,
+                    options: options
+                };
+            }
+            
+            extractReportAndOptions(text) {
+                const lines = text.split('\n');
+                const reportLines = [];
+                const options = [];
+                let inOptions = false;
+                
+                for (let line of lines) {
+                    if (line.match(/^\d+\.\s/)) {
+                        inOptions = true;
+                        options.push(line.replace(/^\d+\.\s/, ''));
+                    } else if (inOptions && line.trim() === '') {
+                        // 选项之间的空行，忽略
+                    } else if (inOptions) {
+                        // 选项描述的续行
+                        if (options.length > 0) {
+                            options[options.length - 1] += ' ' + line.trim();
+                        }
+                    } else {
+                        reportLines.push(line);
+                    }
+                }
+                
+                const report = reportLines.join('\n');
+                
+                if (options.length === 0) {
+                    return {
+                        report: report,
+                        options: [
+                            "开仓放粮，赈济灾民",
+                            "加税增加国库收入",
+                            "派遣官员调查情况"
+                        ]
+                    };
+                }
+                
+                return {
+                    report: report,
+                    options: options
+                };
+            }
+        }
+
+        // Narrative Agent
+        class NarrativeAgent {
+            constructor() {
+                this.identity = "史官";
+                this.aiService = new AIService();
+            }
+            
+            async generateNarrative(world, npcData) {
+                const npcReport = npcData.report || npcData;
+                
+                const prompt = `你是一位古代史官，负责客观记录历史。请根据以下世界状态和吏部尚书奏折，生成一段古风剧情旁白。要求：
+
+1. 严格依据提供的信息，不得虚构世界状态数值以外的重大事件。
+2. 叙事应包含三部分：
+   - 对当前时局的简要概括（基于世界状态）。
+   - 对尚书奏折的转述或皇帝的反应。
+   - 对未来的一点展望或史官的评语。
+3. 语言风格古雅，可适当使用典故，但需贴合情境。
+4. 为增加历史的生动性，可以从不同角度描述同一事实，但不可矛盾。
+5. 若有数值异常（如粮食极低、民心极高），请根据常理推断社会状况，但不要超出数值范围虚构具体事件。
+
+世界状态：
+- 时间：${world.time}
+- 银两：${world.银两}
+- 粮食：${world.粮食}
+- 民心：${world.民心}
+
+吏部尚书奏折：
+${npcReport}
+
+请开始生成剧情旁白：`;
+                
+                const narrative = await this.aiService.processRequest({
+                    type: 'creative_narrative',
+                    content: prompt,
+                    systemPrompt: '你是一位古代史官，正在记录历史。请根据用户提供的信息生成一段古风剧情旁白，严格依据信息，避免虚构。',
+                    constraints: {
+                        maxTokens: 1000,
+                        temperature: 0.7
+                    }
+                });
+                return narrative;
+            }
+        }
+
+        // AI Service
+        class AIService {
+            constructor(apiKey) {
+                this.apiKey = apiKey || 'e5d3732f-691b-4eae-86c4-2cc7f99a36cf';
+                this.cache = new Map();
+            }
+            
+            generateCacheKey(request) {
+                return JSON.stringify(request);
+            }
+            
+            async processRequest(request) {
+                const cacheKey = this.generateCacheKey(request);
+                
+                if (this.cache.has(cacheKey)) {
+                    log(`[LLM] 从缓存获取响应...`, 'info');
+                    return this.cache.get(cacheKey);
+                }
+
+                const response = await this.generate(request);
+                
+                this.cache.set(cacheKey, response);
+                
+                return response;
+            }
+            
+            async generate(request) {
+                try {
+                    log(`[LLM] 生成内容中...`, 'info');
+                    log(`[LLM] Prompt: ${request.content.substring(0, 200)}...`, 'info');
+                    
+                    // 豆包API调用
+                    const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                            'Authorization': `Bearer ${this.apiKey}`
+                        },
+                        body: JSON.stringify({
+                            model: 'doubao-1-5-pro-32k-250115',
+                            messages: [
+                                {"role": "system","content": request.systemPrompt || "你是一个智能助手，根据用户提供的内容生成相应的回答。"},
+                                {"role": "user","content": request.content}
+                            ],
+                            temperature: request.constraints?.temperature || 0.7,
+                            max_tokens: request.constraints?.maxTokens || 1000
+                        })
+                    });
+                    
+                    const data = await response.json();
+                    
+                    if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+                        return data.choices[0].message.content;
+                    } else {
+                        log('豆包API 响应格式错误: ' + JSON.stringify(data), 'error');
+                        return this.getFallbackResponse(request);
+                    }
+                } catch (error) {
+                    log('豆包API 调用失败: ' + error.message, 'error');
+                    return this.getFallbackResponse(request);
+                }
+            }
+            
+            getFallbackResponse(request) {
+                switch (request.type) {
+                    case 'agent_dialogue':
+                        return '臣明白。';
+                    case 'creative_narrative':
+                        return '当前国家局势稳定，皇帝治理有方，国泰民安。';
+                    case 'event_generation':
+                        return JSON.stringify([{
+                            title: "AI生成事件",
+                            description: "系统通过AI生成的事件",
+                            department: "未知",
+                            options: [
+                                {"text": "查看详情", "description": "查看事件的详细信息"},
+                                {"text": "忽略", "description": "暂时忽略此事件"}
+                            ],
+                            impact: {}
+                        }]);
+                    default:
+                        return '已收到您的请求。';
+                }
+            }
+        }
+
+        // 游戏引擎实例
+        let gameEngine = null;
+
+        // 开始游戏
+        async function startGame() {
+            if (isGameRunning) {
+                log('游戏已经在运行中', 'warning');
+                return;
+            }
+
+            log('开始游戏...', 'info');
+            isGameRunning = true;
+
+            // 初始化游戏引擎
+            gameEngine = new GameEngine();
+
+            // 运行第一回合
+            await runTurn();
+        }
+
+        // 运行一回合
+        async function runTurn() {
+            if (!gameEngine) {
+                log('游戏未初始化', 'error');
+                return;
+            }
+
+            log('运行一回合...', 'info');
+
+            // 更新游戏状态显示
+            updateGameStateDisplay();
+
+            // 运行游戏引擎
+            const { npcData, narrative } = await gameEngine.runTurn();
+
+            // 更新显示
+            document.getElementById('reportOutput').textContent = npcData.report;
+            document.getElementById('narrativeOutput').textContent = narrative;
+
+            // 显示选择选项
+            displayChoices(npcData.options);
+
+            // 更新游戏状态显示
+            updateGameStateDisplay();
+        }
+
+        // 下一回合
+        async function nextTurn() {
+            if (!gameEngine) {
+                log('游戏未初始化', 'error');
+                return;
+            }
+
+            log('开始下一回合...', 'info');
+            await runTurn();
+        }
+
+        // 重置游戏
+        function resetGame() {
+            log('重置游戏...', 'info');
+            isGameRunning = false;
+            gameState = {
+                time: '第1年 2月',
+                银两: 105,
+                粮食: 15,
+                民心: 60
+            };
+            currentNpcData = null;
+            gameEngine = null;
+
+            // 重置显示
+            updateGameStateDisplay();
+            document.getElementById('reportOutput').textContent = '等待游戏开始...';
+            document.getElementById('narrativeOutput').textContent = '等待游戏开始...';
+            document.getElementById('choiceContainer').innerHTML = '<p>等待游戏开始...</p>';
+            document.querySelector('.custom-command').style.display = 'none';
+        }
+
+        // 更新游戏状态显示
+        function updateGameStateDisplay() {
+            if (gameEngine) {
+                document.getElementById('timeValue').textContent = gameEngine.worldState.time;
+                document.getElementById('silverValue').textContent = gameEngine.worldState.银两;
+                document.getElementById('grainValue').textContent = gameEngine.worldState.粮食;
+                document.getElementById('popularityValue').textContent = gameEngine.worldState.民心;
+            } else {
+                document.getElementById('timeValue').textContent = gameState.time;
+                document.getElementById('silverValue').textContent = gameState.银两;
+                document.getElementById('grainValue').textContent = gameState.粮食;
+                document.getElementById('popularityValue').textContent = gameState.民心;
+            }
+        }
+
+        // 显示选择选项
+        function displayChoices(options) {
+            const choiceContainer = document.getElementById('choiceContainer');
+            choiceContainer.innerHTML = '';
+
+            options.forEach((option, index) => {
+                const button = document.createElement('button');
+                button.className = 'choice-btn';
+                button.textContent = `${index + 1}. ${option}`;
+                button.onclick = () => handleChoice(index + 1, option);
+                choiceContainer.appendChild(button);
+            });
+
+            // 添加自定义命令选项
+            const customButton = document.createElement('button');
+            customButton.className = 'choice-btn';
+            customButton.textContent = `${options.length + 1}. 输入自定义命令`;
+            customButton.onclick = showCustomCommandInput;
+            choiceContainer.appendChild(customButton);
+        }
+
+        // 显示自定义命令输入
+        function showCustomCommandInput() {
+            document.querySelector('.custom-command').style.display = 'block';
+        }
+
+        // 提交自定义命令
+        async function submitCustomCommand() {
+            const customCommand = document.getElementById('customCommand').value;
+            if (!customCommand) {
+                log('请输入自定义命令', 'warning');
+                return;
+            }
+
+            log(`提交自定义命令: ${customCommand}`, 'info');
+
+            // 处理自定义命令
+            await gameEngine.updateWorldStateFromChoice(4, customCommand);
+
+            // 隐藏自定义命令输入
+            document.querySelector('.custom-command').style.display = 'none';
+            document.getElementById('customCommand').value = '';
+
+            // 更新游戏状态显示
+            updateGameStateDisplay();
+
+            // 运行下一回合
+            await runTurn();
+        }
+
+        // 处理选择
+        async function handleChoice(choice, option) {
+            log(`选择了: ${choice} - ${option}`, 'info');
+
+            // 更新世界状态
+            await gameEngine.updateWorldStateFromChoice(choice, option);
+
+            // 更新游戏状态显示
+            updateGameStateDisplay();
+
+            // 运行下一回合
+            await runTurn();
+        }
+
+        // 日志函数
+        function log(message, type = 'info') {
+            const logConsole = document.getElementById('logConsole');
+            const entry = document.createElement('div');
+            entry.className = `log-entry ${type}`;
+
+            const timestamp = document.createElement('span');
+            timestamp.className = 'timestamp';
+            timestamp.textContent = new Date().toLocaleTimeString();
+
+            entry.appendChild(timestamp);
+            entry.appendChild(document.createTextNode(`[${type.toUpperCase()}] ${message}`));
+
+            logConsole.appendChild(entry);
+            logConsole.scrollTop = logConsole.scrollHeight;
+
+            // 同时输出到浏览器控制台
+            window.console.log(`[${type.toUpperCase()}] ${message}`);
+        }
+
+        // 清空日志
+        function clearLog() {
+            document.getElementById('logConsole').innerHTML = '';
+            log('日志已清空', 'info');
+        }
+
+        // 导出日志
+        function exportLog() {
+            const logConsole = document.getElementById('logConsole');
+            const logText = logConsole.innerText;
+
+            const blob = new Blob([logText], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `monarch_simulator_log_${Date.now()}.txt`;
+            a.click();
+
+            URL.revokeObjectURL(url);
+            log('日志已导出', 'success');
+        }
+
+        // 页面加载时
+        window.onload = function() {
+            log('君主模拟器Demo可视化页面已加载', 'info');
+            log('请点击"开始游戏"按钮开始体验', 'info');
+            updateGameStateDisplay();
+        };
+    </script>
+</body>
+</html>
