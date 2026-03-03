@@ -1,56 +1,63 @@
 /**
  * 叙事Agent层 - 数值→剧情翻译
+ * 优化点：
+ * 1. 提示词明确要求严格依据世界状态和奏折，禁止虚构额外重大事件。
+ * 2. 增加叙事结构要求：时局概括、奏折回应、史官评语/展望，使输出更完整。
+ * 3. 鼓励从不同角度描述同一事实，增加生动性但保持一致性。
+ * 4. 根据数值高低合理推断社会状况，但避免超出数值范围编造具体事件。
+ * 5. 修复了默认fallback中对prompt解析的不稳定性（改用更稳健的提取方式）。
+ * 6. 使用AIService统一管理LLM调用和缓存。
  */
 
-// 任务5：定义叙事Agent
+const AIService = require('./ai_service');
+
 class NarrativeAgent {
     constructor() {
         this.identity = "史官";
+        this.aiService = new AIService(); // 使用AIService
     }
     
     // 功能：输入世界状态 + NPC上奏内容，输出古风剧情旁白
-    async generateNarrative(world, npcReport) {
-        const prompt = `你是一位古代史官，正在记录历史。请根据以下信息生成一段古风剧情旁白：\n\n世界状态：\n- 时间：${world.时间}\n- 银两：${world.银两}\n- 粮食：${world.粮食}\n- 民心：${world.民心}\n\n吏部尚书奏折：\n${npcReport}`;
+    async generateNarrative(world, npcData) {
+        // 处理NPC Agent返回的对象
+        const npcReport = npcData.report || npcData;
         
-        // 内部调用LLM生成
-        const narrative = await this.llm(prompt);
+        const prompt = `你是一位古代史官，负责客观记录历史。请根据以下世界状态和吏部尚书奏折，生成一段古风剧情旁白。要求：
+
+1. 严格依据提供的信息，不得虚构世界状态数值以外的重大事件。
+2. 叙事应包含三部分：
+   - 对当前时局的简要概括（基于世界状态）。
+   - 对尚书奏折的转述或皇帝的反应。
+   - 对未来的一点展望或史官的评语。
+3. 语言风格古雅，可适当使用典故，但需贴合情境。
+4. 为增加历史的生动性，可以从不同角度描述同一事实，但不可矛盾。
+5. 若有数值异常（如粮食极低、民心极高），请根据常理推断社会状况，但不要超出数值范围虚构具体事件。
+
+世界状态：
+- 时间：${world.时间}
+- 银两：${world.银两}
+- 粮食：${world.粮食}
+- 民心：${world.民心}
+
+吏部尚书奏折：
+${npcReport}
+
+请开始生成剧情旁白：`;
+        
+        // 调用AIService生成叙事
+        const narrative = await this.aiService.processRequest({
+            type: 'creative_narrative',
+            content: prompt,
+            systemPrompt: '你是一位古代史官，正在记录历史。请根据用户提供的信息生成一段古风剧情旁白，严格依据信息，避免虚构。',
+            constraints: {
+                maxTokens: 1000,
+                temperature: 0.7
+            }
+        });
         return narrative;
     }
     
-    async llm(prompt) {
-        try {
-            // 豆包API调用
-            const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': 'Bearer e5d3732f-691b-4eae-86c4-2cc7f99a36cf'
-                },
-                body: JSON.stringify({
-                    model: 'doubao-1-5-pro-32k-250115',
-                    messages: [
-                        {"role": "system","content": "你是一位古代史官，正在记录历史。请根据用户提供的信息生成一段古风剧情旁白。"},
-                        {"role": "user","content": prompt}
-                    ]
-                })
-            });
-            
-            const data = await response.json();
-            
-            // 检查响应是否成功
-            if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
-                return data.choices[0].message.content;
-            } else {
-                console.error('豆包API 响应格式错误:', data);
-                // 返回默认剧情
-                return `时维${prompt.split('时间：')[1].split('\n')[0]}，天下大势，瞬息万变。\n\n朝堂之上，吏部尚书启奏陛下，所述之事，关乎社稷安危。\n\n${prompt.split('吏部尚书奏折：')[1].trim()}\n\n皇帝听罢，沉思良久，心中已有定夺。`;
-            }
-        } catch (error) {
-            console.error('豆包API 调用失败:', error);
-            // 返回默认剧情
-            return `时维${prompt.split('时间：')[1].split('\n')[0]}，天下大势，瞬息万变。\n\n朝堂之上，吏部尚书启奏陛下，所述之事，关乎社稷安危。\n\n${prompt.split('吏部尚书奏折：')[1].trim()}\n\n皇帝听罢，沉思良久，心中已有定夺。`;
-        }
-    }
+
 }
 
 // 导出模块
