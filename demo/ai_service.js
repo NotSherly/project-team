@@ -2,10 +2,36 @@
  * AI服务类 - 封装LLM调用、缓存管理等通用功能
  */
 
+const fs = require('fs');
+const path = require('path');
+
+// 加载 .env 文件
+function loadEnv() {
+    const envPath = path.join(__dirname, '..', '.env');
+    if (fs.existsSync(envPath)) {
+        const envContent = fs.readFileSync(envPath, 'utf8');
+        envContent.split('\n').forEach(line => {
+            const match = line.match(/^([^#=]+)=(.*)$/);
+            if (match) {
+                process.env[match[1].trim()] = match[2].trim();
+            }
+        });
+    }
+}
+
+// 初始化时加载环境变量
+loadEnv();
+
 class AIService {
     constructor(apiKey) {
-        this.apiKey = apiKey || 'e5d3732f-691b-4eae-86c4-2cc7f99a36cf';
+        this.apiKey = apiKey || process.env.DOUBAO_API_KEY || '';
+        this.apiUrl = process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+        this.model = process.env.DOUBAO_MODEL || 'doubao-1-5-pro-32k-250115';
         this.cache = new Map();
+        
+        if (!this.apiKey) {
+            console.warn('[警告] 未设置 DOUBAO_API_KEY，请在项目根目录的 .env 文件中配置');
+        }
     }
     
     // 生成缓存键
@@ -50,14 +76,14 @@ class AIService {
             console.log(`[LLM] Prompt: ${request.content}`);
             
             // 豆包API调用
-            const response = await fetch('https://ark.cn-beijing.volces.com/api/v3/chat/completions', {
+            const response = await fetch(this.apiUrl, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
                     'Authorization': `Bearer ${this.apiKey}`
                 },
                 body: JSON.stringify({
-                    model: 'doubao-1-5-pro-32k-250115',
+                    model: this.model,
                     messages: [
                         {"role": "system","content": request.systemPrompt || "你是一个智能助手，根据用户提供的内容生成相应的回答。"},
                         {"role": "user","content": request.content}
