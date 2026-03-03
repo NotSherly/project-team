@@ -4,8 +4,8 @@
 
 // 导入模块
 const { world, runWorldTurn, checkEvents } = require('./world');
-const NpcAgent = require('./npc_agent');
-const NarrativeAgent = require('./narrative_agent');
+const LibuAgent = require('./agents/libu_agent');
+const NarrativeAgent = require('./agents/narrative_agent');
 const AIService = require('./ai_service');
 const readline = require('readline');
 
@@ -18,7 +18,7 @@ const rl = readline.createInterface({
 // 任务6：编写主循环
 async function gameLoop() {
     // 初始化Agent
-    const npcAgent = new NpcAgent();
+    const libuAgent = new LibuAgent();
     const narrativeAgent = new NarrativeAgent();
     const aiService = new AIService(); // 创建AIService实例
     
@@ -39,8 +39,8 @@ async function gameLoop() {
         
         // 2. 吏部Agent观察→思考→行动
         console.log('\n2. 吏部Agent观察→思考→行动');
-        npcAgent.observeWorld(updatedWorld);
-        const npcData = await npcAgent.act();
+        libuAgent.observeWorld(updatedWorld);
+        const npcData = await libuAgent.act();
         console.log('吏部尚书奏折:', npcData.report);
         
         // 3. 叙事Agent生成剧情

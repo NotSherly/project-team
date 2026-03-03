@@ -8,7 +8,7 @@
  * 5. 使用AIService统一管理LLM调用和缓存。
  */
 
-const AIService = require('./ai_service');
+const AIService = require('../ai_service');
 
 class NpcAgent {
     constructor() {
