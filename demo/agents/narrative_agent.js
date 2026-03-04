@@ -14,12 +14,10 @@ const AIService = require('../ai_service');
 class NarrativeAgent {
     constructor() {
         this.identity = "史官";
-        this.aiService = new AIService(); // 使用AIService
+        this.aiService = new AIService();
     }
     
-    // 功能：输入世界状态 + NPC上奏内容，输出古风剧情旁白
     async generateNarrative(world, npcData) {
-        // 处理NPC Agent返回的对象
         const npcReport = npcData.report || npcData;
         
         const prompt = `你是一位古代史官，负责客观记录历史。请根据以下世界状态和吏部尚书奏折，生成一段古风剧情旁白。要求：
@@ -33,18 +31,23 @@ class NarrativeAgent {
 4. 为增加历史的生动性，可以从不同角度描述同一事实，但不可矛盾。
 5. 若有数值异常（如粮食极低、民心极高），请根据常理推断社会状况，但不要超出数值范围虚构具体事件。
 
-世界状态：
+【世界状态】
 - 时间：${world.时间}
-- 银两：${world.银两}
-- 粮食：${world.粮食}
-- 民心：${world.民心}
+- 银两：${world.银两}万两
+- 粮食：${world.粮食}万石
+- 民心：${world.民心}（满分100）
+- 军力：${world.军力}（满分100）
+- 稳定度：${world.稳定度}（满分100）
+- 威望：${world.威望}（满分100）
+- 文化：${world.文化}（满分100）
+- 工程：${world.工程}（满分100）
+- 法律：${world.法律}（满分100）
 
 吏部尚书奏折：
 ${npcReport}
 
 请开始生成剧情旁白：`;
         
-        // 调用AIService生成叙事
         const narrative = await this.aiService.processRequest({
             type: 'creative_narrative',
             content: prompt,
@@ -56,9 +59,6 @@ ${npcReport}
         });
         return narrative;
     }
-    
-
 }
 
-// 导出模块
 module.exports = NarrativeAgent;

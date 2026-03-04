@@ -10,7 +10,6 @@ const AIService = require('../ai_service');
 
 class LibubuAgent {
     constructor() {
-        // 加载配置文件
         this.config = this.loadConfig();
         
         this.identity = this.config.agent.identity;
@@ -21,7 +20,6 @@ class LibubuAgent {
         this.aiService = new AIService();
     }
     
-    // 加载配置文件
     loadConfig() {
         const configPath = path.join(__dirname, 'agents_config', 'libubu_agent_config.json');
         try {
@@ -29,7 +27,6 @@ class LibubuAgent {
             return JSON.parse(configData);
         } catch (error) {
             console.error('[LibubuAgent] 加载配置文件失败:', error);
-            // 返回默认配置
             return {
                 agent: {
                     name: "礼部尚书",
@@ -50,20 +47,17 @@ class LibubuAgent {
         }
     }
     
-    // 观察世界（读取数值）
     observeWorld(world) {
         this.currentWorld = world;
         return world;
     }
     
-    // 思考决策（根据社会状况决定上奏内容）
     think() {
         const world = this.currentWorld;
         const randomFactor = Math.random();
         const events = this.config.events;
         let issue = "";
 
-        // 1. 教育兴盛（民心良好）
         if (world.民心 >= events.education.threshold) {
             if (randomFactor < events.education.probability) {
                 issue = events.education.variants[0].replace('{{people}}', world.民心);
@@ -71,7 +65,6 @@ class LibubuAgent {
                 issue = events.education.variants[1];
             }
         }
-        // 2. 礼仪祭祀（中等民心）
         else if (world.民心 >= events.ceremony.threshold) {
             if (randomFactor < events.ceremony.probability) {
                 issue = events.ceremony.variants[0];
@@ -79,7 +72,6 @@ class LibubuAgent {
                 issue = events.ceremony.variants[1];
             }
         }
-        // 3. 外事活动（一般民心）
         else if (world.民心 >= events.foreignAffairs.threshold) {
             if (randomFactor < events.foreignAffairs.probability) {
                 issue = events.foreignAffairs.variants[0];
@@ -87,7 +79,6 @@ class LibubuAgent {
                 issue = events.foreignAffairs.variants[1];
             }
         }
-        // 4. 科举考试（民心较低）
         else if (world.民心 >= events.examination.threshold) {
             if (randomFactor < events.examination.probability) {
                 issue = events.examination.variants[0];
@@ -95,7 +86,20 @@ class LibubuAgent {
                 issue = events.examination.variants[1];
             }
         }
-        // 5. 正常状态
+        else if (events.culture && world.文化 < events.culture.threshold) {
+            if (randomFactor < events.culture.probability) {
+                issue = events.culture.variants[0].replace('{{culture}}', world.文化);
+            } else {
+                issue = events.culture.variants[1].replace('{{culture}}', world.文化);
+            }
+        }
+        else if (events.prestige && world.威望 < events.prestige.threshold) {
+            if (randomFactor < events.prestige.probability) {
+                issue = events.prestige.variants[0].replace('{{prestige}}', world.威望);
+            } else {
+                issue = events.prestige.variants[1];
+            }
+        }
         else {
             const season = this.getSeason(world.时间);
             const normalEvents = events.normal.variants;
@@ -106,7 +110,6 @@ class LibubuAgent {
         return issue;
     }
 
-    // 辅助：从时间字符串中推测季节
     getSeason(timeStr) {
         if (timeStr.includes('春')) return '春季';
         if (timeStr.includes('夏')) return '夏季';
@@ -115,12 +118,16 @@ class LibubuAgent {
         return '此时';
     }
     
-    // 行动（调用LLM API生成奏折和选择选项）
     async act() {
+        const world = this.currentWorld;
         const 奏折要点 = this.think();
-        const prompt = this.config.prompts.reportTemplate.replace('{{issue}}', 奏折要点);
         
-        // 调用AIService生成奏折
+        let prompt = this.config.prompts.reportTemplate;
+        prompt = prompt.replace('{{issue}}', 奏折要点);
+        prompt = prompt.replace(/\{\{culture\}\}/g, world.文化);
+        prompt = prompt.replace(/\{\{prestige\}\}/g, world.威望);
+        prompt = prompt.replace(/\{\{people\}\}/g, world.民心);
+        
         const 生成的内容 = await this.aiService.processRequest({
             type: 'agent_dialogue',
             content: prompt,
@@ -128,13 +135,11 @@ class LibubuAgent {
             constraints: this.config.prompts.constraints
         });
         
-        // 存储到记忆
         this.memory.push({
             timestamp: new Date().toISOString(),
             content: 生成的内容
         });
         
-        // 分离奏折和选项
         const { report, options } = this.extractReportAndOptions(生成的内容);
         
         return {
@@ -143,7 +148,6 @@ class LibubuAgent {
         };
     }
     
-    // 分离奏折和选项
     extractReportAndOptions(text) {
         const lines = text.split('\n');
         const reportLines = [];
@@ -155,9 +159,7 @@ class LibubuAgent {
                 inOptions = true;
                 options.push(line.replace(/^\d+\.\s/, ''));
             } else if (inOptions && line.trim() === '') {
-                // 选项之间的空行，忽略
             } else if (inOptions) {
-                // 选项描述的续行
                 if (options.length > 0) {
                     options[options.length - 1] += ' ' + line.trim();
                 }
@@ -168,7 +170,6 @@ class LibubuAgent {
         
         const report = reportLines.join('\n');
         
-        // 如果没有提取到选项，返回默认选项
         if (options.length === 0) {
             return {
                 report: report,
@@ -183,5 +184,4 @@ class LibubuAgent {
     }
 }
 
-// 导出模块
 module.exports = LibubuAgent;

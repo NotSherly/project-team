@@ -10,7 +10,6 @@ const AIService = require('../ai_service');
 
 class BingbuAgent {
     constructor() {
-        // 加载配置文件
         this.config = this.loadConfig();
         
         this.identity = this.config.agent.identity;
@@ -21,7 +20,6 @@ class BingbuAgent {
         this.aiService = new AIService();
     }
     
-    // 加载配置文件
     loadConfig() {
         const configPath = path.join(__dirname, 'agents_config', 'bingbu_agent_config.json');
         try {
@@ -29,7 +27,6 @@ class BingbuAgent {
             return JSON.parse(configData);
         } catch (error) {
             console.error('[BingbuAgent] 加载配置文件失败:', error);
-            // 返回默认配置
             return {
                 agent: {
                     name: "兵部尚书",
@@ -50,20 +47,17 @@ class BingbuAgent {
         }
     }
     
-    // 观察世界（读取数值）
     observeWorld(world) {
         this.currentWorld = world;
         return world;
     }
     
-    // 思考决策（根据军事状况决定上奏内容）
     think() {
         const world = this.currentWorld;
         const randomFactor = Math.random();
         const events = this.config.events;
         let issue = "";
 
-        // 1. 边境安全（民心良好）
         if (world.民心 >= events.borderSecurity.threshold) {
             if (randomFactor < events.borderSecurity.probability) {
                 issue = events.borderSecurity.variants[0].replace('{{people}}', world.民心);
@@ -71,7 +65,6 @@ class BingbuAgent {
                 issue = events.borderSecurity.variants[1];
             }
         }
-        // 2. 军械管理（银两充足）
         else if (world.银两 >= events.weaponry.threshold) {
             if (randomFactor < events.weaponry.probability) {
                 issue = events.weaponry.variants[0].replace('{{silver}}', world.银两);
@@ -79,7 +72,6 @@ class BingbuAgent {
                 issue = events.weaponry.variants[1].replace('{{silver}}', world.银两);
             }
         }
-        // 3. 军事训练（银两一般）
         else if (world.银两 >= events.militaryTraining.threshold) {
             if (randomFactor < events.militaryTraining.probability) {
                 issue = events.militaryTraining.variants[0];
@@ -87,7 +79,6 @@ class BingbuAgent {
                 issue = events.militaryTraining.variants[1];
             }
         }
-        // 4. 武官选拔（银两较少）
         else if (world.银两 >= events.officerSelection.threshold) {
             if (randomFactor < events.officerSelection.probability) {
                 issue = events.officerSelection.variants[0];
@@ -95,7 +86,20 @@ class BingbuAgent {
                 issue = events.officerSelection.variants[1];
             }
         }
-        // 5. 正常状态
+        else if (events.militaryStrength && world.军力 < events.militaryStrength.threshold) {
+            if (randomFactor < events.militaryStrength.probability) {
+                issue = events.militaryStrength.variants[0].replace('{{military}}', world.军力);
+            } else {
+                issue = events.militaryStrength.variants[1].replace('{{military}}', world.军力);
+            }
+        }
+        else if (events.prestige && world.威望 < events.prestige.threshold) {
+            if (randomFactor < events.prestige.probability) {
+                issue = events.prestige.variants[0].replace('{{prestige}}', world.威望);
+            } else {
+                issue = events.prestige.variants[1];
+            }
+        }
         else {
             const season = this.getSeason(world.时间);
             const normalEvents = events.normal.variants;
@@ -106,7 +110,6 @@ class BingbuAgent {
         return issue;
     }
 
-    // 辅助：从时间字符串中推测季节
     getSeason(timeStr) {
         if (timeStr.includes('春')) return '春季';
         if (timeStr.includes('夏')) return '夏季';
@@ -115,12 +118,17 @@ class BingbuAgent {
         return '此时';
     }
     
-    // 行动（调用LLM API生成奏折和选择选项）
     async act() {
+        const world = this.currentWorld;
         const 奏折要点 = this.think();
-        const prompt = this.config.prompts.reportTemplate.replace('{{issue}}', 奏折要点);
         
-        // 调用AIService生成奏折
+        let prompt = this.config.prompts.reportTemplate;
+        prompt = prompt.replace('{{issue}}', 奏折要点);
+        prompt = prompt.replace(/\{\{military\}\}/g, world.军力);
+        prompt = prompt.replace(/\{\{prestige\}\}/g, world.威望);
+        prompt = prompt.replace(/\{\{silver\}\}/g, world.银两);
+        prompt = prompt.replace(/\{\{people\}\}/g, world.民心);
+        
         const 生成的内容 = await this.aiService.processRequest({
             type: 'agent_dialogue',
             content: prompt,
@@ -128,13 +136,11 @@ class BingbuAgent {
             constraints: this.config.prompts.constraints
         });
         
-        // 存储到记忆
         this.memory.push({
             timestamp: new Date().toISOString(),
             content: 生成的内容
         });
         
-        // 分离奏折和选项
         const { report, options } = this.extractReportAndOptions(生成的内容);
         
         return {
@@ -143,7 +149,6 @@ class BingbuAgent {
         };
     }
     
-    // 分离奏折和选项
     extractReportAndOptions(text) {
         const lines = text.split('\n');
         const reportLines = [];
@@ -155,9 +160,7 @@ class BingbuAgent {
                 inOptions = true;
                 options.push(line.replace(/^\d+\.\s/, ''));
             } else if (inOptions && line.trim() === '') {
-                // 选项之间的空行，忽略
             } else if (inOptions) {
-                // 选项描述的续行
                 if (options.length > 0) {
                     options[options.length - 1] += ' ' + line.trim();
                 }
@@ -168,7 +171,6 @@ class BingbuAgent {
         
         const report = reportLines.join('\n');
         
-        // 如果没有提取到选项，返回默认选项
         if (options.length === 0) {
             return {
                 report: report,
@@ -183,5 +185,4 @@ class BingbuAgent {
     }
 }
 
-// 导出模块
 module.exports = BingbuAgent;

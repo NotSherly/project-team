@@ -10,7 +10,6 @@ const AIService = require('../ai_service');
 
 class XingbuAgent {
     constructor() {
-        // 加载配置文件
         this.config = this.loadConfig();
         
         this.identity = this.config.agent.identity;
@@ -21,7 +20,6 @@ class XingbuAgent {
         this.aiService = new AIService();
     }
     
-    // 加载配置文件
     loadConfig() {
         const configPath = path.join(__dirname, 'agents_config', 'xingbu_agent_config.json');
         try {
@@ -29,7 +27,6 @@ class XingbuAgent {
             return JSON.parse(configData);
         } catch (error) {
             console.error('[XingbuAgent] 加载配置文件失败:', error);
-            // 返回默认配置
             return {
                 agent: {
                     name: "刑部尚书",
@@ -50,20 +47,17 @@ class XingbuAgent {
         }
     }
     
-    // 观察世界（读取数值）
     observeWorld(world) {
         this.currentWorld = world;
         return world;
     }
     
-    // 思考决策（根据社会状况决定上奏内容）
     think() {
         const world = this.currentWorld;
         const randomFactor = Math.random();
         const events = this.config.events;
         let issue = "";
 
-        // 1. 社会秩序（民心良好）
         if (world.民心 >= events.lawAndOrder.threshold) {
             if (randomFactor < events.lawAndOrder.probability) {
                 issue = events.lawAndOrder.variants[0].replace('{{people}}', world.民心);
@@ -71,7 +65,6 @@ class XingbuAgent {
                 issue = events.lawAndOrder.variants[1];
             }
         }
-        // 2. 刑事案件（民心一般）
         else if (world.民心 >= events.criminalCases.threshold) {
             if (randomFactor < events.criminalCases.probability) {
                 issue = events.criminalCases.variants[0];
@@ -79,7 +72,6 @@ class XingbuAgent {
                 issue = events.criminalCases.variants[1];
             }
         }
-        // 3. 法律制度（民心较低）
         else if (world.民心 >= events.legalSystem.threshold) {
             if (randomFactor < events.legalSystem.probability) {
                 issue = events.legalSystem.variants[0];
@@ -87,7 +79,6 @@ class XingbuAgent {
                 issue = events.legalSystem.variants[1];
             }
         }
-        // 4. 监狱管理（民心很低）
         else if (world.民心 >= events.prisonManagement.threshold) {
             if (randomFactor < events.prisonManagement.probability) {
                 issue = events.prisonManagement.variants[0];
@@ -95,7 +86,20 @@ class XingbuAgent {
                 issue = events.prisonManagement.variants[1];
             }
         }
-        // 5. 正常状态
+        else if (events.lawValue && world.法律 < events.lawValue.threshold) {
+            if (randomFactor < events.lawValue.probability) {
+                issue = events.lawValue.variants[0].replace('{{law}}', world.法律);
+            } else {
+                issue = events.lawValue.variants[1].replace('{{law}}', world.法律);
+            }
+        }
+        else if (events.stability && world.稳定度 < events.stability.threshold) {
+            if (randomFactor < events.stability.probability) {
+                issue = events.stability.variants[0].replace('{{stability}}', world.稳定度);
+            } else {
+                issue = events.stability.variants[1];
+            }
+        }
         else {
             const season = this.getSeason(world.时间);
             const normalEvents = events.normal.variants;
@@ -106,7 +110,6 @@ class XingbuAgent {
         return issue;
     }
 
-    // 辅助：从时间字符串中推测季节
     getSeason(timeStr) {
         if (timeStr.includes('春')) return '春季';
         if (timeStr.includes('夏')) return '夏季';
@@ -115,12 +118,16 @@ class XingbuAgent {
         return '此时';
     }
     
-    // 行动（调用LLM API生成奏折和选择选项）
     async act() {
+        const world = this.currentWorld;
         const 奏折要点 = this.think();
-        const prompt = this.config.prompts.reportTemplate.replace('{{issue}}', 奏折要点);
         
-        // 调用AIService生成奏折
+        let prompt = this.config.prompts.reportTemplate;
+        prompt = prompt.replace('{{issue}}', 奏折要点);
+        prompt = prompt.replace(/\{\{law\}\}/g, world.法律);
+        prompt = prompt.replace(/\{\{stability\}\}/g, world.稳定度);
+        prompt = prompt.replace(/\{\{people\}\}/g, world.民心);
+        
         const 生成的内容 = await this.aiService.processRequest({
             type: 'agent_dialogue',
             content: prompt,
@@ -128,13 +135,11 @@ class XingbuAgent {
             constraints: this.config.prompts.constraints
         });
         
-        // 存储到记忆
         this.memory.push({
             timestamp: new Date().toISOString(),
             content: 生成的内容
         });
         
-        // 分离奏折和选项
         const { report, options } = this.extractReportAndOptions(生成的内容);
         
         return {
@@ -143,7 +148,6 @@ class XingbuAgent {
         };
     }
     
-    // 分离奏折和选项
     extractReportAndOptions(text) {
         const lines = text.split('\n');
         const reportLines = [];
@@ -155,9 +159,7 @@ class XingbuAgent {
                 inOptions = true;
                 options.push(line.replace(/^\d+\.\s/, ''));
             } else if (inOptions && line.trim() === '') {
-                // 选项之间的空行，忽略
             } else if (inOptions) {
-                // 选项描述的续行
                 if (options.length > 0) {
                     options[options.length - 1] += ' ' + line.trim();
                 }
@@ -168,7 +170,6 @@ class XingbuAgent {
         
         const report = reportLines.join('\n');
         
-        // 如果没有提取到选项，返回默认选项
         if (options.length === 0) {
             return {
                 report: report,
@@ -183,5 +184,4 @@ class XingbuAgent {
     }
 }
 
-// 导出模块
 module.exports = XingbuAgent;
