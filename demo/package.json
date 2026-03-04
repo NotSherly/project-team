@@ -1,0 +1,15 @@
+{
+  "name": "monarch-simulator",
+  "version": "1.0.0",
+  "description": "天命：AI君主模拟器",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js",
+    "test": "node test_all_agents.js"
+  },
+  "dependencies": {
+    "express": "^4.18.2",
+    "cors": "^2.8.5",
+    "dotenv": "^16.3.1"
+  }
+}

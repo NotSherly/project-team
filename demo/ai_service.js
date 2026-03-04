@@ -75,7 +75,6 @@ class AIService {
             console.log(`[LLM] 生成内容中...`);
             console.log(`[LLM] Prompt: ${request.content}`);
             
-            // 豆包API调用
             const response = await fetch(this.apiUrl, {
                 method: 'POST',
                 headers: {
@@ -104,6 +103,71 @@ class AIService {
         } catch (error) {
             console.error('豆包API 调用失败:', error);
             return this.getFallbackResponse(request);
+        }
+    }
+    
+    // 流式响应生成
+    async *streamRequest(request) {
+        try {
+            console.log(`[LLM] 流式生成内容中...`);
+            
+            const response = await fetch(this.apiUrl, {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'Authorization': `Bearer ${this.apiKey}`
+                },
+                body: JSON.stringify({
+                    model: this.model,
+                    messages: [
+                        {"role": "system","content": request.systemPrompt || "你是一个智能助手，根据用户提供的内容生成相应的回答。"},
+                        {"role": "user","content": request.content}
+                    ],
+                    temperature: request.constraints?.temperature || 0.7,
+                    max_tokens: request.constraints?.maxTokens || 1000,
+                    stream: true
+                })
+            });
+            
+            if (!response.ok) {
+                throw new Error(`API请求失败: ${response.status}`);
+            }
+            
+            const reader = response.body;
+            const decoder = new TextDecoder();
+            let buffer = '';
+            
+            for await (const chunk of reader) {
+                buffer += decoder.decode(chunk, { stream: true });
+                
+                const lines = buffer.split('\n');
+                buffer = lines.pop() || '';
+                
+                for (const line of lines) {
+                    const trimmedLine = line.trim();
+                    
+                    if (trimmedLine === '' || trimmedLine === 'data: [DONE]') {
+                        continue;
+                    }
+                    
+                    if (trimmedLine.startsWith('data: ')) {
+                        try {
+                            const jsonStr = trimmedLine.slice(6);
+                            const data = JSON.parse(jsonStr);
+                            
+                            if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
+                                yield data.choices[0].delta.content;
+                            }
+                        } catch (parseError) {
+                            // 忽略解析错误，继续处理
+                        }
+                    }
+                }
+            }
+            
+        } catch (error) {
+            console.error('流式生成失败:', error);
+            yield this.getFallbackResponse(request);
         }
     }
     
