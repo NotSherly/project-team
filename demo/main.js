@@ -18,7 +18,12 @@ const {
     getRecentEvents,
     getPlayerActions,
     checkGameEnd,
-    getDepartmentList
+    getDepartmentList,
+    getContextSummary,
+    compressContext,
+    getWorldStateHistory,
+    rewindToState,
+    getStateDifference
 } = require('./world');
 
 const LibuAgent = require('./agents/libu_agent');
@@ -58,9 +63,13 @@ async function generateNarrative(worldState) {
     const narrativeAgent = new NarrativeAgent();
     const events = checkEvents();
     
+    // 使用上下文摘要
+    const contextSummary = getContextSummary('medium');
+    
     const narrative = await narrativeAgent.generateNarrative(worldState, {
         report: `当前事件：${events.join('、')}`,
-        options: []
+        options: [],
+        context: contextSummary
     });
     
     return narrative;
@@ -197,21 +206,14 @@ async function executeAllDecisions() {
     
     console.log('\n正在让六部尚书分析决策影响...\n');
     
+    // 使用压缩上下文
+    const compressedContext = compressContext(800);
+    
     const prompt = `陛下本回合做出了以下决策：
 
 ${decisionsSummary}
 
-当前国家状态：
-- 时间：${world.时间}
-- 银两：${world.银两}
-- 粮食：${world.粮食}
-- 民心：${world.民心}
-- 军力：${world.军力}
-- 稳定度：${world.稳定度}
-- 威望：${world.威望}
-- 文化：${world.文化}
-- 工程：${world.工程}
-- 法律：${world.法律}
+${compressedContext}
 
 请综合分析这些决策对国家的影响，并以JSON格式返回各项数值的变化。考虑决策之间的相互影响和综合效果。
 
