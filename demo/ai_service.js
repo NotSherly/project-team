@@ -46,6 +46,14 @@ class AIService {
         this.model = process.env.ARK_MODEL || process.env.DOUBAO_MODEL || 'doubao-1-5-pro-32k-250115';
         this.cache = new Map();
         
+        this.fallbackModels = [
+            'doubao-1-5-pro-32k-250115'
+        ];
+        
+        this.currentModelIndex = 0;
+        this.modelFailureCount = new Map();
+        this.maxFailuresBeforeFallback = 3;
+        
         if (!this.apiKey) {
             console.warn('[警告] 未设置 API 密钥，请在项目根目录的 .env 文件中配置 ARK_API_KEY 或 DOUBAO_API_KEY');
         }
@@ -94,35 +102,91 @@ class AIService {
     }
     
     // 调用AI引擎
-    async generate(request) {
-        console.log(`[LLM] 生成内容中...`);
+    async generate(request, modelIndex = 0) {
+        const currentModel = this.fallbackModels[modelIndex] || this.model;
+        console.log(`[LLM] 生成内容中... (模型: ${currentModel})`);
         console.log(`[LLM] Prompt: ${request.content}`);
         
-        const response = await fetch(this.apiUrl, {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-                'Authorization': `Bearer ${this.apiKey}`
-            },
-            body: JSON.stringify({
-                model: this.model,
-                messages: [
-                    {"role": "system","content": request.systemPrompt || "你是一个智能助手，根据用户提供的内容生成相应的回答。"},
-                    {"role": "user","content": request.content}
-                ],
-                temperature: request.constraints?.temperature || 0.7,
-                max_tokens: request.constraints?.maxTokens || 1000
-            })
-        });
+        const timeout = request.constraints?.timeout || 15000;
         
-        const data = await response.json();
-        
-        if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
-            return data.choices[0].message.content;
-        } else {
-            console.error('豆包API 响应格式错误:', data);
-            throw new Error('豆包API 响应格式错误');
+        try {
+            const response = await Promise.race([
+                fetch(this.apiUrl, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                        'Authorization': `Bearer ${this.apiKey}`
+                    },
+                    body: JSON.stringify({
+                        model: currentModel,
+                        messages: [
+                            {"role": "system","content": request.systemPrompt || "你是一个智能助手，根据用户提供的内容生成相应的回答。"},
+                            {"role": "user","content": request.content}
+                        ],
+                        temperature: request.constraints?.temperature || 0.7,
+                        max_tokens: request.constraints?.maxTokens || 1000
+                    })
+                }),
+                this.createTimeoutPromise(timeout)
+            ]);
+            
+            const data = await response.json();
+            
+            if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+                this.recordModelSuccess(currentModel);
+                return data.choices[0].message.content;
+            } else {
+                console.error('豆包API 响应格式错误:', data);
+                throw new Error('豆包API 响应格式错误');
+            }
+        } catch (error) {
+            console.error(`[LLM] 模型 ${currentModel} 调用失败:`, error.message);
+            this.recordModelFailure(currentModel);
+            
+            if (modelIndex < this.fallbackModels.length - 1) {
+                console.log(`[LLM] 切换到备用模型: ${this.fallbackModels[modelIndex + 1]}`);
+                return this.generate(request, modelIndex + 1);
+            } else {
+                console.log(`[LLM] 所有模型调用失败，使用默认响应`);
+                return this.getFallbackResponse(request);
+            }
         }
+    }
+    
+    // 创建超时Promise
+    createTimeoutPromise(timeout) {
+        return new Promise((_, reject) => {
+            setTimeout(() => {
+                reject(new Error(`请求超时（${timeout}ms）`));
+            }, timeout);
+        });
+    }
+    
+    // 记录模型成功
+    recordModelSuccess(model) {
+        this.modelFailureCount.set(model, 0);
+    }
+    
+    // 记录模型失败
+    recordModelFailure(model) {
+        const currentCount = this.modelFailureCount.get(model) || 0;
+        this.modelFailureCount.set(model, currentCount + 1);
+        
+        if (currentCount + 1 >= this.maxFailuresBeforeFallback) {
+            console.log(`[LLM] 模型 ${model} 失败次数过多，标记为不可用`);
+        }
+    }
+    
+    // 获取可用模型
+    getAvailableModel() {
+        for (let i = 0; i < this.fallbackModels.length; i++) {
+            const model = this.fallbackModels[i];
+            const failureCount = this.modelFailureCount.get(model) || 0;
+            if (failureCount < this.maxFailuresBeforeFallback) {
+                return { model, index: i };
+            }
+        }
+        return { model: this.fallbackModels[0], index: 0 };
     }
     
     // 流式响应生成
