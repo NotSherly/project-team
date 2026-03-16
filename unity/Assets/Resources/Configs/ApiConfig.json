@@ -1,0 +1,9 @@
+{
+  "baseUrl": "http://localhost:3000/api",
+  "endpoints": {
+    "sendMessage": "/chat/private",
+    "getHistory": "/chat/history",
+    "getAgents": "/agents"
+  },
+  "timeout": 30000
+}

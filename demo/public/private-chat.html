@@ -1,0 +1,459 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>私聊测试 - 天命：AI君主模拟器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', Arial, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            height: 100vh;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .container {
+            display: flex;
+            width: 90%;
+            max-width: 1200px;
+            height: 80vh;
+            background: white;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.2);
+            overflow: hidden;
+        }
+
+        .sidebar {
+            width: 250px;
+            background: #2c3e50;
+            color: white;
+            padding: 20px;
+            overflow-y: auto;
+        }
+
+        .sidebar h2 {
+            margin-bottom: 20px;
+            font-size: 18px;
+            border-bottom: 2px solid #34495e;
+            padding-bottom: 10px;
+        }
+
+        .agent-list {
+            list-style: none;
+        }
+
+        .agent-item {
+            padding: 12px;
+            margin-bottom: 8px;
+            background: #34495e;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.3s;
+        }
+
+        .agent-item:hover {
+            background: #4a5f7f;
+            transform: translateX(5px);
+        }
+
+        .agent-item.active {
+            background: #667eea;
+        }
+
+        .agent-name {
+            font-weight: bold;
+            margin-bottom: 4px;
+        }
+
+        .agent-dept {
+            font-size: 12px;
+            color: #bdc3c7;
+        }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .chat-header {
+            padding: 20px;
+            background: #f8f9fa;
+            border-bottom: 1px solid #dee2e6;
+        }
+
+        .chat-header h1 {
+            font-size: 20px;
+            color: #2c3e50;
+        }
+
+        .chat-messages {
+            flex: 1;
+            padding: 20px;
+            overflow-y: auto;
+            background: #f8f9fa;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            display: flex;
+            align-items: flex-start;
+        }
+
+        .message.player {
+            flex-direction: row-reverse;
+        }
+
+        .message-content {
+            max-width: 70%;
+            padding: 12px 16px;
+            border-radius: 10px;
+            line-height: 1.5;
+        }
+
+        .message.agent .message-content {
+            background: white;
+            color: #2c3e50;
+            border: 1px solid #dee2e6;
+        }
+
+        .message.player .message-content {
+            background: #667eea;
+            color: white;
+        }
+
+        .message-sender {
+            font-size: 12px;
+            color: #6c757d;
+            margin-bottom: 4px;
+            padding: 0 16px;
+        }
+
+        .message.player .message-sender {
+            text-align: right;
+        }
+
+        .chat-input-area {
+            padding: 20px;
+            background: white;
+            border-top: 1px solid #dee2e6;
+        }
+
+        .input-group {
+            display: flex;
+            gap: 10px;
+        }
+
+        #messageInput {
+            flex: 1;
+            padding: 12px;
+            border: 1px solid #dee2e6;
+            border-radius: 5px;
+            font-size: 14px;
+        }
+
+        #messageInput:focus {
+            outline: none;
+            border-color: #667eea;
+        }
+
+        #sendBtn {
+            padding: 12px 30px;
+            background: #667eea;
+            color: white;
+            border: none;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: background 0.3s;
+        }
+
+        #sendBtn:hover {
+            background: #5568d3;
+        }
+
+        #sendBtn:disabled {
+            background: #95a5a6;
+            cursor: not-allowed;
+        }
+
+        .loading {
+            text-align: center;
+            padding: 20px;
+            color: #6c757d;
+        }
+
+        .error {
+            background: #f8d7da;
+            color: #721c24;
+            padding: 12px;
+            border-radius: 5px;
+            margin: 10px 0;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 40px;
+            color: #6c757d;
+        }
+
+        .empty-state h3 {
+            margin-bottom: 10px;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="sidebar">
+            <h2>六部尚书</h2>
+            <ul class="agent-list" id="agentList">
+                <li class="loading">加载中...</li>
+            </ul>
+        </div>
+
+        <div class="chat-area">
+            <div class="chat-header">
+                <h1 id="chatTitle">请选择一位尚书开始对话</h1>
+            </div>
+
+            <div class="chat-messages" id="chatMessages">
+                <div class="empty-state">
+                    <h3>👑 陛下</h3>
+                    <p>请从左侧选择一位尚书，开始私密对话</p>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <div class="input-group">
+                    <input
+                        type="text"
+                        id="messageInput"
+                        placeholder="输入您的问询..."
+                        disabled
+                    />
+                    <button id="sendBtn" disabled>发送</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = '/api';
+        let currentAgentId = null;
+        let agents = [];
+
+        // 加载Agent列表
+        async function loadAgents() {
+            try {
+                const response = await fetch(`${API_BASE}/agents`);
+                const result = await response.json();
+
+                if (result.success) {
+                    agents = result.data.agents;
+                    renderAgentList();
+                } else {
+                    showError('加载Agent列表失败');
+                }
+            } catch (error) {
+                console.error('加载Agent失败:', error);
+                showError('网络错误，请检查服务器是否运行');
+            }
+        }
+
+        // 渲染Agent列表
+        function renderAgentList() {
+            const agentList = document.getElementById('agentList');
+            agentList.innerHTML = agents.map(agent => `
+                <li class="agent-item" data-id="${agent.id}" onclick="selectAgent('${agent.id}')">
+                    <div class="agent-name">${agent.name}</div>
+                    <div class="agent-dept">${agent.department}</div>
+                </li>
+            `).join('');
+        }
+
+        // 选择Agent
+        async function selectAgent(agentId) {
+            currentAgentId = agentId;
+
+            // 更新UI状态
+            document.querySelectorAll('.agent-item').forEach(item => {
+                item.classList.remove('active');
+            });
+            document.querySelector(`[data-id="${agentId}"]`).classList.add('active');
+
+            const agent = agents.find(a => a.id === agentId);
+            document.getElementById('chatTitle').textContent = `与 ${agent.name} 对话`;
+
+            // 启用输入
+            document.getElementById('messageInput').disabled = false;
+            document.getElementById('sendBtn').disabled = false;
+            document.getElementById('messageInput').focus();
+
+            // 加载聊天历史
+            await loadChatHistory(agentId);
+        }
+
+        // 加载聊天历史
+        async function loadChatHistory(agentId) {
+            try {
+                const response = await fetch(`${API_BASE}/chat/history?agentId=${agentId}`);
+                const result = await response.json();
+
+                if (result.success) {
+                    const messages = result.data.messages;
+                    renderMessages(messages);
+                } else {
+                    showError('加载聊天历史失败');
+                }
+            } catch (error) {
+                console.error('加载聊天历史失败:', error);
+                showError('加载聊天历史失败');
+            }
+        }
+
+        // 渲染消息列表
+        function renderMessages(messages) {
+            const chatMessages = document.getElementById('chatMessages');
+
+            if (messages.length === 0) {
+                chatMessages.innerHTML = `
+                    <div class="empty-state">
+                        <h3>开始新对话</h3>
+                        <p>向尚书提出您的问询</p>
+                    </div>
+                `;
+                return;
+            }
+
+            chatMessages.innerHTML = messages.map(msg => {
+                const isPlayer = msg.senderId === 'player';
+                const agent = agents.find(a => a.id === msg.senderId);
+                const senderName = isPlayer ? '陛下' : (agent ? agent.name : '尚书');
+
+                return `
+                    <div class="message ${isPlayer ? 'player' : 'agent'}">
+                        <div>
+                            <div class="message-sender">${senderName}</div>
+                            <div class="message-content">${msg.content}</div>
+                        </div>
+                    </div>
+                `;
+            }).join('');
+
+            // 滚动到底部
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // 发送消息
+        async function sendMessage() {
+            if (!currentAgentId) {
+                alert('请先选择一位尚书');
+                return;
+            }
+
+            const input = document.getElementById('messageInput');
+            const message = input.value.trim();
+
+            if (!message) {
+                return;
+            }
+
+            // 禁用输入
+            input.disabled = true;
+            document.getElementById('sendBtn').disabled = true;
+
+            // 添加用户消息到界面
+            addMessageToUI('player', message);
+            input.value = '';
+
+            try {
+                const response = await fetch(`${API_BASE}/chat/private`, {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        agentId: currentAgentId,
+                        message: message
+                    })
+                });
+
+                const result = await response.json();
+
+                if (result.success) {
+                    // 添加Agent回复到界面
+                    addMessageToUI(currentAgentId, result.data.message);
+                } else {
+                    showError('发送失败: ' + result.error);
+                }
+            } catch (error) {
+                console.error('发送消息失败:', error);
+                showError('网络错误，请重试');
+            } finally {
+                // 重新启用输入
+                input.disabled = false;
+                document.getElementById('sendBtn').disabled = false;
+                input.focus();
+            }
+        }
+
+        // 添加消息到UI
+        function addMessageToUI(senderId, content) {
+            const chatMessages = document.getElementById('chatMessages');
+            const isPlayer = senderId === 'player';
+            const agent = agents.find(a => a.id === senderId);
+            const senderName = isPlayer ? '陛下' : (agent ? agent.name : '尚书');
+
+            // 移除空状态
+            const emptyState = chatMessages.querySelector('.empty-state');
+            if (emptyState) {
+                emptyState.remove();
+            }
+
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${isPlayer ? 'player' : 'agent'}`;
+            messageDiv.innerHTML = `
+                <div>
+                    <div class="message-sender">${senderName}</div>
+                    <div class="message-content">${content}</div>
+                </div>
+            `;
+
+            chatMessages.appendChild(messageDiv);
+            chatMessages.scrollTop = chatMessages.scrollHeight;
+        }
+
+        // 显示错误
+        function showError(message) {
+            const chatMessages = document.getElementById('chatMessages');
+            const errorDiv = document.createElement('div');
+            errorDiv.className = 'error';
+            errorDiv.textContent = message;
+            chatMessages.appendChild(errorDiv);
+
+            setTimeout(() => {
+                errorDiv.remove();
+            }, 5000);
+        }
+
+        // 事件监听
+        document.getElementById('sendBtn').addEventListener('click', sendMessage);
+        document.getElementById('messageInput').addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                sendMessage();
+            }
+        });
+
+        // 初始化
+        loadAgents();
+    </script>
+</body>
+</html>

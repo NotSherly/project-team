@@ -32,6 +32,7 @@ const GongbuAgent = require('./agents/gongbu_agent');
 const NarrativeAgent = require('./agents/narrative_agent');
 const AIService = require('./ai_service');
 const GroupChat = require('./group_chat');
+const gameState = require('./game_state');
 
 const app = express();
 const PORT = 3000;
@@ -84,16 +85,7 @@ async function generateAllMemorials(worldState) {
     return memorials;
 }
 
-app.get('/api/game/state', (req, res) => {
-    res.json({
-        success: true,
-        data: {
-            worldState: getWorldState(),
-            events: checkEvents(),
-            memorials: getAllDepartmentMemorials()
-        }
-    });
-});
+
 
 app.post('/api/game/start', async (req, res) => {
     try {
@@ -430,6 +422,325 @@ app.get('/api/group-chat/status', (req, res) => {
     res.json({
         success: true,
         data: groupChatInstance.getStatus()
+    });
+});
+
+// 私聊相关接口
+const chatHistory = {};
+
+app.post('/api/chat/private', async (req, res) => {
+    try {
+        const { agentId, message } = req.body;
+
+        const agentData = agents[agentId];
+        if (!agentData) {
+            return res.status(400).json({
+                success: false,
+                error: '无效的Agent ID'
+            });
+        }
+
+        // 确保agent实例存在
+        if (!agentData.agent) {
+            agentData.agent = new agentData.class();
+        }
+
+        // 获取当前世界状态
+        const worldState = getWorldState();
+
+        // 观察世界
+        agentData.agent.observeWorld(worldState);
+
+        // 获取聊天历史上下文（最近5条消息）
+        if (!chatHistory[agentId]) {
+            chatHistory[agentId] = [];
+        }
+        const recentHistory = chatHistory[agentId].slice(-10);
+        const historyContext = recentHistory.map(msg =>
+            `${msg.senderId === 'player' ? '陛下' : agentData.name}：${msg.content}`
+        ).join('\n');
+
+        // 使用Agent的私聊方法生成回复
+        const response = await agentData.agent.privateChat(message, worldState, historyContext);
+
+        // 保存聊天历史
+        const timestamp = Date.now();
+        chatHistory[agentId].push({
+            id: `msg_${timestamp}_player`,
+            senderId: 'player',
+            content: message,
+            timestamp: timestamp
+        });
+
+        chatHistory[agentId].push({
+            id: `msg_${timestamp}_agent`,
+            senderId: agentId,
+            content: response,
+            timestamp: timestamp
+        });
+
+        // 限制历史记录长度
+        if (chatHistory[agentId].length > 50) {
+            chatHistory[agentId] = chatHistory[agentId].slice(-50);
+        }
+
+        res.json({
+            success: true,
+            data: {
+                message: response
+            }
+        });
+    } catch (error) {
+        console.error('私聊失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+app.get('/api/chat/history', (req, res) => {
+    try {
+        const { agentId } = req.query;
+        
+        if (!agentId) {
+            return res.status(400).json({
+                success: false,
+                error: '缺少agentId参数'
+            });
+        }
+        
+        const history = chatHistory[agentId] || [];
+        
+        res.json({
+            success: true,
+            data: {
+                messages: history
+            }
+        });
+    } catch (error) {
+        console.error('获取聊天历史失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+app.get('/api/agents', (req, res) => {
+    try {
+        const agentList = Object.keys(agents).map(key => ({
+            id: key,
+            name: agents[key].name,
+            department: key
+        }));
+        
+        res.json({
+            success: true,
+            data: {
+                agents: agentList
+            }
+        });
+    } catch (error) {
+        console.error('获取Agent列表失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 议案发起与群聊初始化接口
+app.post('/api/group-chat/proposal/start', async (req, res) => {
+    try {
+        const { topic_type, content, cost_treasury } = req.body;
+        
+        if (!topic_type || !content) {
+            return res.status(400).json({
+                success: false,
+                error: '缺少必要参数'
+            });
+        }
+        
+        if (!groupChatInstance) {
+            groupChatInstance = new GroupChat();
+        }
+        
+        const worldState = getWorldState();
+        const result = await groupChatInstance.startProposal(topic_type, content, cost_treasury, worldState);
+        
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('发起议案失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 投票执行接口
+app.post('/api/group-chat/vote/execute', (req, res) => {
+    try {
+        const { session_id, force_execute } = req.body;
+        
+        if (!groupChatInstance) {
+            return res.status(400).json({
+                success: false,
+                error: '群聊未初始化'
+            });
+        }
+        
+        if (groupChatInstance.getSessionId() !== session_id) {
+            return res.status(400).json({
+                success: false,
+                error: '会话ID不匹配'
+            });
+        }
+        
+        const result = groupChatInstance.executeVote(force_execute || false);
+        
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('执行投票失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 实时消息流接口（EventSource）
+app.get('/api/group-chat/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    // 定期发送消息
+    const interval = setInterval(() => {
+        if (groupChatInstance) {
+            const status = groupChatInstance.getStatus();
+            res.write(`data: ${JSON.stringify({ type: 'status', data: status })}\n\n`);
+        }
+    }, 2000);
+    
+    // 处理客户端断开连接
+    req.on('close', () => {
+        clearInterval(interval);
+        res.end();
+    });
+});
+
+// 设置文武倾向接口
+app.post('/api/group-chat/era-spirit', (req, res) => {
+    try {
+        const { spirit } = req.body;
+        
+        if (!groupChatInstance) {
+            groupChatInstance = new GroupChat();
+        }
+        
+        if (['balanced', 'military', 'civil'].includes(spirit)) {
+            groupChatInstance.setEraSpirit(spirit);
+            res.json({
+                success: true,
+                data: { message: `已设置文武倾向为: ${spirit}` }
+            });
+        } else {
+            res.status(400).json({
+                success: false,
+                error: '无效的文武倾向，可选值: balanced, military, civil'
+            });
+        }
+    } catch (error) {
+        console.error('设置文武倾向失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 全局状态快照接口
+app.get('/api/game/state', (req, res) => {
+    try {
+        const state = gameState.getState();
+        res.json({
+            success: true,
+            data: state
+        });
+    } catch (error) {
+        console.error('获取游戏状态失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 手动触发回合结算接口
+app.post('/api/game/round/end', async (req, res) => {
+    try {
+        const result = await gameState.triggerRoundEnd();
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('执行回合结算失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 模拟天灾接口
+app.post('/api/game/disaster', (req, res) => {
+    try {
+        const result = gameState.triggerDisaster();
+        res.json({
+            success: true,
+            data: result
+        });
+    } catch (error) {
+        console.error('触发天灾失败:', error);
+        res.status(500).json({
+            success: false,
+            error: error.message
+        });
+    }
+});
+
+// 游戏状态实时流接口
+app.get('/api/game/stream', (req, res) => {
+    res.setHeader('Content-Type', 'text/event-stream');
+    res.setHeader('Cache-Control', 'no-cache');
+    res.setHeader('Connection', 'keep-alive');
+    
+    // 发送初始状态
+    const initialState = gameState.getState();
+    res.write(`data: ${JSON.stringify({ type: 'INITIAL_STATE', data: initialState })}\n\n`);
+    
+    // 订阅状态变更
+    const unsubscribe = gameState.subscribe((message) => {
+        try {
+            res.write(`data: ${JSON.stringify(message)}\n\n`);
+        } catch (error) {
+            console.error('发送状态更新失败:', error);
+        }
+    });
+    
+    // 处理客户端断开连接
+    req.on('close', () => {
+        unsubscribe();
+        res.end();
     });
 });
 
