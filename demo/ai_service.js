@@ -42,12 +42,12 @@ loadEnv();
 class AIService {
     constructor(apiKey) {
         this.apiKey = apiKey || process.env.ARK_API_KEY || process.env.DOUBAO_API_KEY || '';
-        this.apiUrl = process.env.ARK_API_URL || process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3';
-        this.model = process.env.ARK_MODEL || process.env.DOUBAO_MODEL || 'doubao-1-5-pro-32k-250115';
+        this.apiUrl = process.env.ARK_API_URL || process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
+        this.model = process.env.ARK_MODEL || process.env.DOUBAO_MODEL || 'Doubao-Seed-1.6';
         this.cache = new Map();
         
         this.fallbackModels = [
-            'doubao-1-5-pro-32k-250115'
+            this.model
         ];
         
         this.currentModelIndex = 0;
@@ -105,11 +105,15 @@ class AIService {
     async generate(request, modelIndex = 0) {
         const currentModel = this.fallbackModels[modelIndex] || this.model;
         console.log(`[LLM] 生成内容中... (模型: ${currentModel})`);
-        console.log(`[LLM] Prompt: ${request.content}`);
+        console.log(`[LLM] API URL: ${this.apiUrl}`);
+        console.log(`[LLM] API Key: ${this.apiKey ? '已配置' : '未配置'}`);
+        console.log(`[LLM] System Prompt: ${request.systemPrompt}`);
+        console.log(`[LLM] User Prompt: ${request.content}`);
         
-        const timeout = request.constraints?.timeout || 15000;
+        const timeout = request.constraints?.timeout || 30000; // 增加超时时间到30秒
         
         try {
+            console.log(`[LLM] 发送请求...`);
             const response = await Promise.race([
                 fetch(this.apiUrl, {
                     method: 'POST',
@@ -130,17 +134,21 @@ class AIService {
                 this.createTimeoutPromise(timeout)
             ]);
             
+            console.log(`[LLM] 收到响应，状态码: ${response.status}`);
+            
             const data = await response.json();
+            console.log(`[LLM] 响应数据: ${JSON.stringify(data)}`);
             
             if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
                 this.recordModelSuccess(currentModel);
+                console.log(`[LLM] 生成成功: ${data.choices[0].message.content.substring(0, 100)}...`);
                 return data.choices[0].message.content;
             } else {
                 console.error('豆包API 响应格式错误:', data);
                 throw new Error('豆包API 响应格式错误');
             }
         } catch (error) {
-            console.error(`[LLM] 模型 ${currentModel} 调用失败:`, error.message);
+            console.error(`[LLM] 模型 ${currentModel} 调用失败:`, error);
             this.recordModelFailure(currentModel);
             
             if (modelIndex < this.fallbackModels.length - 1) {
@@ -260,53 +268,155 @@ class AIService {
             case 'agent_dialogue':
                 // 检查请求内容，根据不同部门生成不同的默认响应
                 if (request.content.includes('吏部尚书')) {
-                    return `臣吏部尚书叩奏陛下：
+                    const responses = [
+                        `臣吏部尚书叩奏陛下：
 
 当前官员考核已完成，各地官员政绩良好，国泰民安。臣以为应加强官员选拔，注重德才兼备，为国家储备更多人才。
 
 1. 加强官员考核，建立更完善的政绩评价体系
 2. 扩大科举取士规模，选拔更多优秀人才
-3. 优化官员晋升机制，激励官员积极作为`;
+3. 优化官员晋升机制，激励官员积极作为`,
+                        `臣吏部尚书叩奏陛下：
+
+近日考察地方官员，发现部分官员政绩突出，应予以嘉奖；同时也有个别官员怠政，需严加惩处。臣建议：
+
+1. 对政绩优异者予以晋升和奖励
+2. 对怠政官员进行训诫和调整
+3. 完善官员考核制度，形成长效机制`,
+                        `臣吏部尚书叩奏陛下：
+
+当前朝廷人才济济，但仍需广纳贤才。臣已着手修订科举制度，扩大取士范围，为国家选拔更多德才兼备之人。
+
+1. 修订科举考试内容，更注重实务能力
+2. 增加地方举荐渠道，发掘民间人才
+3. 建立官员培训体系，提高整体素质`
+                    ];
+                    return responses[Math.floor(Math.random() * responses.length)];
                 } else if (request.content.includes('户部尚书')) {
-                    return `臣户部尚书叩奏陛下：
+                    const responses = [
+                        `臣户部尚书叩奏陛下：
 
 本季度税收如期完成，国库充盈，足以应对各项开支。臣以为应合理规划财政，确保国家经济稳定发展。
 
 1. 整顿税收，清查偷税漏税
 2. 削减不必要的朝廷开支
-3. 增加国库储备，应对突发情况`;
+3. 增加国库储备，应对突发情况`,
+                        `臣户部尚书叩奏陛下：
+
+近日核算国库收支，发现部分地方税收存在漏洞，臣已派遣官员前往清查。同时，今年粮食丰收，建议：
+
+1. 增加粮食储备，应对可能的灾荒
+2. 适当降低农民税负，提高生产积极性
+3. 发展商业贸易，增加国家财政收入`,
+                        `臣户部尚书叩奏陛下：
+
+当前国家财政状况良好，但仍需未雨绸缪。臣建议：
+
+1. 建立财政预警机制，及时发现问题
+2. 优化财政支出结构，重点支持民生项目
+3. 鼓励民间投资，促进经济发展`
+                    ];
+                    return responses[Math.floor(Math.random() * responses.length)];
                 } else if (request.content.includes('礼部尚书')) {
-                    return `臣礼部尚书叩奏陛下：
+                    const responses = [
+                        `臣礼部尚书叩奏陛下：
 
 邻国遣使来朝，臣已妥善安排外事接待，彰显我大国风范。臣以为应加强文化交流，提升国家威望。
 
 1. 完善典章制度，修订礼仪规范
 2. 兴办学校，发展教育事业
-3. 加强与邻国的文化交流`;
+3. 加强与邻国的文化交流`,
+                        `臣礼部尚书叩奏陛下：
+
+近日修订了国家礼仪制度，使其更加符合当前国情。同时，科举考试即将举行，臣已做好准备工作：
+
+1. 严格考试纪律，确保公平公正
+2. 邀请饱学之士参与阅卷
+3. 为考生提供良好的考试环境`,
+                        `臣礼部尚书叩奏陛下：
+
+为弘扬国家文化，臣计划举办盛大的文化庆典，邀请各国使节参加，以展示我朝文化繁荣：
+
+1. 组织文化展览，展示国家成就
+2. 举办学术研讨会，促进文化交流
+3. 编排文艺演出，展现民族特色`
+                    ];
+                    return responses[Math.floor(Math.random() * responses.length)];
                 } else if (request.content.includes('兵部尚书')) {
-                    return `臣兵部尚书叩奏陛下：
+                    const responses = [
+                        `臣兵部尚书叩奏陛下：
 
 军械充足，军队训练有素，边防稳固。臣以为应继续加强军事建设，确保国家安全。
 
 1. 加强军事训练，提高士兵战斗力
 2. 更新军械装备，提升军事实力
-3. 加强边境防御，防范外敌入侵`;
+3. 加强边境防御，防范外敌入侵`,
+                        `臣兵部尚书叩奏陛下：
+
+近日巡查边境，发现部分边防设施需要修缮，臣已安排人手进行加固。同时，为提高军队战斗力：
+
+1. 增加军事训练强度，提升士兵素质
+2. 引进新型军械，更新装备
+3. 加强边防巡逻，确保边境安全`,
+                        `臣兵部尚书叩奏陛下：
+
+当前边防形势稳定，但仍需警惕。臣建议：
+
+1. 与邻国建立军事互信机制
+2. 加强情报收集，及时掌握边境动态
+3. 组织军事演习，提高应对突发事件的能力`
+                    ];
+                    return responses[Math.floor(Math.random() * responses.length)];
                 } else if (request.content.includes('刑部尚书')) {
-                    return `臣刑部尚书叩奏陛下：
+                    const responses = [
+                        `臣刑部尚书叩奏陛下：
 
 重大案件已侦破，社会秩序稳定。臣以为应加强司法建设，确保法律公正执行。
 
 1. 改革司法制度，提高审判效率
 2. 加强法律宣传，提高百姓法律意识
-3. 严惩违法犯罪，维护社会秩序`;
+3. 严惩违法犯罪，维护社会秩序`,
+                        `臣刑部尚书叩奏陛下：
+
+近日审理了多起案件，均已公正判决。为进一步完善司法体系：
+
+1. 修订法律条文，使其更加适应社会发展
+2. 加强司法人员培训，提高执法水平
+3. 建立冤案平反机制，保障公民权利`,
+                        `臣刑部尚书叩奏陛下：
+
+当前社会秩序良好，但仍存在一些治安问题。臣建议：
+
+1. 加强基层治安力量，预防犯罪发生
+2. 开展普法教育，提高百姓法律意识
+3. 建立快速反应机制，及时处理突发事件`
+                    ];
+                    return responses[Math.floor(Math.random() * responses.length)];
                 } else if (request.content.includes('工部尚书')) {
-                    return `臣工部尚书叩奏陛下：
+                    const responses = [
+                        `臣工部尚书叩奏陛下：
 
 水利工程正在兴修，农业生产得到保障。臣以为应继续加强工程建设，改善民生。
 
 1. 兴修水利，保障农业生产
 2. 修缮道路，改善交通条件
-3. 加强城市建设，提升城市功能`;
+3. 加强城市建设，提升城市功能`,
+                        `臣工部尚书叩奏陛下：
+
+近日完成了多项重点工程，包括水利灌溉系统和道路修缮。为进一步改善民生：
+
+1. 继续兴修水利设施，确保农业丰收
+2. 扩建城市基础设施，提升城市品质
+3. 发展公共交通，方便百姓出行`,
+                        `臣工部尚书叩奏陛下：
+
+当前工程建设进展顺利，但仍需注意质量控制。臣建议：
+
+1. 建立工程质量监督机制
+2. 培养专业工程人才
+3. 推广先进工程技术，提高建设效率`
+                    ];
+                    return responses[Math.floor(Math.random() * responses.length)];
                 } else {
                     return '臣明白。';
                 }

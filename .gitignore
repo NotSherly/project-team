@@ -1,0 +1,19 @@
+# 环境配置文件
+.env
+
+# 第三方依赖
+node_modules/
+
+# 临时文件
+.claude/
+
+# 技能文件夹
+skills/
+
+# IDE相关文件
+.vscode/
+.idea/
+
+# 编译产物
+build/
+dist/

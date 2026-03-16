@@ -149,12 +149,48 @@ class GongbuAgent {
         };
     }
     
+    async privateChat(message, worldState, historyContext = '') {
+        const chatConfig = this.config.chat || {};
+        const systemPrompt = chatConfig.systemPrompt || this.config.prompts.systemPrompt;
+
+        let contextPrompt = '';
+        if (historyContext) {
+            contextPrompt = `\n\n对话历史：\n${historyContext}\n`;
+        }
+
+        const prompt = `${contextPrompt}
+当前国家状态：
+- 时间：${worldState.时间}
+- 银两：${worldState.银两}万两
+- 粮食：${worldState.粮食}万石
+- 民心：${worldState.民心}
+- 军力：${worldState.军力}
+- 稳定度：${worldState.稳定度}
+- 威望：${worldState.威望}
+
+陛下问询：${message}
+
+请作为${this.config.agent.name}，根据你的职责和性格回答陛下的问题。${chatConfig.responseStyle || '回答要简洁，不超过200字。'}`;
+
+        const response = await this.aiService.processRequest({
+            type: 'agent_dialogue',
+            content: prompt,
+            systemPrompt: systemPrompt,
+            constraints: {
+                maxTokens: 400,
+                temperature: 0.7
+            }
+        });
+
+        return response;
+    }
+
     extractReportAndOptions(text) {
         const lines = text.split('\n');
         const reportLines = [];
         const options = [];
         let inOptions = false;
-        
+
         for (let line of lines) {
             if (line.match(/^\d+\.\s/)) {
                 inOptions = true;
