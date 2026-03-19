@@ -1,9 +1,0 @@
-Agent头像占位图
-
-这里将放置六部尚书的头像图片：
-- libu.png (吏部尚书)
-- hubu.png (户部尚书)
-- libubu.png (礼部尚书)
-- bingbu.png (兵部尚书)
-- xingbu.png (刑部尚书)
-- gongbu.png (工部尚书)

@@ -284,6 +284,6 @@ class GameState {
 // 导出单例
 const gameState = new GameState();
 gameState.loadState();
-gameState.startRoundTimer();
+// gameState.startRoundTimer();
 
 module.exports = gameState;
