@@ -1,0 +1,841 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>六部群聊 - 天命君主模拟器</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Microsoft YaHei', 'PingFang SC', sans-serif;
+            background: linear-gradient(135deg, #1a3c27 0%, #0d261a 100%);
+            min-height: 100vh;
+            color: #d4af37;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+            display: flex;
+            flex-direction: column;
+            height: 100vh;
+        }
+
+        .header {
+            text-align: center;
+            padding: 15px 0;
+            border-bottom: 2px solid rgba(212, 175, 55, 0.3);
+            margin-bottom: 15px;
+        }
+
+        .header h1 {
+            font-size: 1.8em;
+            margin-bottom: 5px;
+        }
+
+        .header p {
+            font-size: 0.9em;
+            opacity: 0.7;
+        }
+
+        .main-content {
+            flex: 1;
+            display: flex;
+            gap: 15px;
+            overflow: auto;
+        }
+
+        .chat-area {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            background: rgba(26, 60, 39, 0.5);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            overflow: hidden;
+        }
+
+        .chat-messages {
+            flex: 1;
+            overflow-y: auto;
+            padding: 15px;
+        }
+
+        .message {
+            margin-bottom: 15px;
+            animation: fadeIn 0.3s ease;
+        }
+
+        @keyframes fadeIn {
+            from { opacity: 0; transform: translateY(10px); }
+            to { opacity: 1; transform: translateY(0); }
+        }
+
+        .message-header {
+            display: flex;
+            align-items: center;
+            margin-bottom: 5px;
+        }
+
+        .message-avatar {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            margin-right: 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 0.8em;
+        }
+
+        .message.player .message-avatar {
+            background: rgba(212, 175, 55, 0.3);
+        }
+
+        .message.agent .message-avatar {
+            background: rgba(76, 175, 80, 0.3);
+        }
+
+        .message-name {
+            font-weight: bold;
+            font-size: 0.9em;
+        }
+
+        .message-time {
+            font-size: 0.75em;
+            opacity: 0.6;
+            margin-left: auto;
+        }
+
+        .message-content {
+            padding: 10px 15px;
+            border-radius: 8px;
+            margin-left: 42px;
+            line-height: 1.5;
+        }
+
+        .message.player .message-content {
+            background: rgba(212, 175, 55, 0.15);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+        }
+
+        .message.agent .message-content {
+            background: rgba(76, 175, 80, 0.15);
+            border: 1px solid rgba(76, 175, 80, 0.3);
+        }
+
+        .typing-indicator {
+            display: flex;
+            align-items: center;
+            padding: 10px 15px;
+            background: rgba(76, 175, 80, 0.1);
+            border-radius: 8px;
+            margin-left: 42px;
+            margin-bottom: 15px;
+        }
+
+        .typing-dots {
+            display: flex;
+            gap: 4px;
+        }
+
+        .typing-dots span {
+            width: 6px;
+            height: 6px;
+            background: #d4af37;
+            border-radius: 50%;
+            animation: typing 1.4s infinite;
+        }
+
+        .typing-dots span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-dots span:nth-child(3) { animation-delay: 0.4s; }
+
+        @keyframes typing {
+            0%, 60%, 100% { opacity: 0.3; }
+            30% { opacity: 1; }
+        }
+
+        .chat-input-area {
+            padding: 15px;
+            border-top: 1px solid rgba(212, 175, 55, 0.3);
+            display: flex;
+            gap: 10px;
+        }
+
+        .chat-input-area input {
+            flex: 1;
+            padding: 12px 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 8px;
+            color: #d4af37;
+            font-size: 1em;
+        }
+
+        .chat-input-area input:focus {
+            outline: none;
+            border-color: rgba(212, 175, 55, 0.6);
+        }
+
+        .btn {
+            padding: 12px 20px;
+            background: rgba(212, 175, 55, 0.2);
+            border: 1px solid rgba(212, 175, 55, 0.5);
+            border-radius: 8px;
+            color: #d4af37;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            font-size: 0.9em;
+        }
+
+        .btn:hover {
+            background: rgba(212, 175, 55, 0.4);
+        }
+
+        .btn:disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+
+        .btn.primary {
+            background: rgba(212, 175, 55, 0.4);
+        }
+
+        .sidebar {
+            width: 280px;
+            display: flex;
+            flex-direction: column;
+            gap: 15px;
+        }
+
+        .card {
+            background: rgba(26, 60, 39, 0.5);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 10px;
+            padding: 15px;
+        }
+
+        .card h2 {
+            font-size: 1em;
+            margin-bottom: 12px;
+            padding-bottom: 8px;
+            border-bottom: 1px solid rgba(212, 175, 55, 0.2);
+        }
+
+        .agent-list {
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+        }
+
+        .agent-btn {
+            display: flex;
+            align-items: center;
+            padding: 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 8px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            color: #d4af37;
+        }
+
+        .agent-btn:hover {
+            background: rgba(212, 175, 55, 0.2);
+        }
+
+        .agent-btn.speaking {
+            border-color: #4caf50;
+            background: rgba(76, 175, 80, 0.2);
+        }
+
+        .agent-btn .icon {
+            width: 30px;
+            height: 30px;
+            border-radius: 50%;
+            background: rgba(212, 175, 55, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            margin-right: 10px;
+            font-size: 0.8em;
+        }
+
+        .agent-btn .name {
+            flex: 1;
+            font-size: 0.9em;
+        }
+
+        .agent-btn .status {
+            font-size: 0.75em;
+            opacity: 0.6;
+        }
+
+        .world-state {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 8px;
+        }
+
+        .state-item {
+            text-align: center;
+            padding: 8px;
+            background: rgba(0, 0, 0, 0.2);
+            border-radius: 5px;
+            font-size: 0.85em;
+        }
+
+        .state-item .label {
+            opacity: 0.7;
+            font-size: 0.8em;
+        }
+
+        .state-item .value {
+            font-weight: bold;
+            margin-top: 2px;
+        }
+
+        .quick-actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 5px;
+        }
+
+        .quick-btn {
+            padding: 6px 10px;
+            background: rgba(0, 0, 0, 0.2);
+            border: 1px solid rgba(212, 175, 55, 0.3);
+            border-radius: 5px;
+            color: #d4af37;
+            cursor: pointer;
+            font-size: 0.8em;
+            transition: all 0.3s ease;
+        }
+
+        .quick-btn:hover {
+            background: rgba(212, 175, 55, 0.2);
+        }
+
+        .log-console {
+            height: 150px;
+            overflow-y: auto;
+            background: rgba(0, 0, 0, 0.3);
+            border: 1px solid rgba(212, 175, 55, 0.2);
+            border-radius: 5px;
+            padding: 10px;
+            font-size: 0.8em;
+            font-family: monospace;
+        }
+
+        .log-entry {
+            margin-bottom: 5px;
+            padding: 2px 5px;
+            border-radius: 3px;
+        }
+
+        .log-entry.info {
+            background: rgba(76, 175, 80, 0.1);
+            border-left: 3px solid #4caf50;
+        }
+
+        .log-entry.warn {
+            background: rgba(255, 152, 0, 0.1);
+            border-left: 3px solid #ff9800;
+        }
+
+        .log-entry.error {
+            background: rgba(244, 67, 54, 0.1);
+            border-left: 3px solid #f44336;
+        }
+
+        .log-entry.debug {
+            background: rgba(33, 150, 243, 0.1);
+            border-left: 3px solid #2196f3;
+        }
+
+        .timestamp {
+            opacity: 0.7;
+            margin-right: 10px;
+        }
+
+        .status-bar {
+            padding: 10px 15px;
+            background: rgba(0, 0, 0, 0.3);
+            border-top: 1px solid rgba(212, 175, 55, 0.3);
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            font-size: 0.85em;
+        }
+
+        .status-indicator {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: #4caf50;
+        }
+
+        .status-dot.busy {
+            background: #ff9800;
+            animation: pulse 1s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.5; }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <div class="header">
+            <h1>🏛️ 六部群聊议事</h1>
+            <p>与六部尚书共同商议国家大事</p>
+            <div style="margin-top: 10px;">
+                <a href="index.html" class="btn primary">返回主界面</a>
+            </div>
+        </div>
+
+        <div class="main-content">
+            <div class="chat-area">
+                <div class="chat-messages" id="chatMessages">
+                    <div class="message agent">
+                        <div class="message-header">
+                            <div class="message-avatar">吏</div>
+                            <span class="message-name">吏部尚书</span>
+                            <span class="message-time">刚刚</span>
+                        </div>
+                        <div class="message-content">
+                            陛下圣安，今日召集六部议事，不知有何要事相商？
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="status-bar">
+                    <div class="status-indicator">
+                        <div class="status-dot" id="statusDot"></div>
+                        <span id="statusText">等待发言</span>
+                    </div>
+                    <span id="messageCount">消息: 1</span>
+                </div>
+
+                <div class="chat-input-area">
+                    <input type="text" id="playerInput" placeholder="输入您想说的话..." onkeypress="handleKeyPress(event)">
+                    <button class="btn" onclick="sendPlayerMessage()">发送</button>
+                </div>
+            </div>
+
+            <div class="sidebar">
+                <div class="card">
+                    <h2>👥 六部尚书</h2>
+                    <div class="agent-list" id="agentList">
+                        <div class="agent-btn" onclick="triggerAgentSpeak('libu')">
+                            <div class="icon">吏</div>
+                            <span class="name">吏部尚书</span>
+                            <span class="status">待命</span>
+                        </div>
+                        <div class="agent-btn" onclick="triggerAgentSpeak('hubu')">
+                            <div class="icon">户</div>
+                            <span class="name">户部尚书</span>
+                            <span class="status">待命</span>
+                        </div>
+                        <div class="agent-btn" onclick="triggerAgentSpeak('libubu')">
+                            <div class="icon">礼</div>
+                            <span class="name">礼部尚书</span>
+                            <span class="status">待命</span>
+                        </div>
+                        <div class="agent-btn" onclick="triggerAgentSpeak('bingbu')">
+                            <div class="icon">兵</div>
+                            <span class="name">兵部尚书</span>
+                            <span class="status">待命</span>
+                        </div>
+                        <div class="agent-btn" onclick="triggerAgentSpeak('xingbu')">
+                            <div class="icon">刑</div>
+                            <span class="name">刑部尚书</span>
+                            <span class="status">待命</span>
+                        </div>
+                        <div class="agent-btn" onclick="triggerAgentSpeak('gongbu')">
+                            <div class="icon">工</div>
+                            <span class="name">工部尚书</span>
+                            <span class="status">待命</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>📊 国家状态</h2>
+                    <div class="world-state">
+                        <div class="state-item">
+                            <div class="label">银两</div>
+                            <div class="value" id="silverValue">500万两</div>
+                        </div>
+                        <div class="state-item">
+                            <div class="label">粮食</div>
+                            <div class="value" id="foodValue">300万石</div>
+                        </div>
+                        <div class="state-item">
+                            <div class="label">民心</div>
+                            <div class="value" id="peopleValue">60</div>
+                        </div>
+                        <div class="state-item">
+                            <div class="label">军力</div>
+                            <div class="value" id="militaryValue">50</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>💬 快捷话题</h2>
+                    <div class="quick-actions">
+                        <button class="quick-btn" onclick="quickTopic('关于当前财政状况')">财政状况</button>
+                        <button class="quick-btn" onclick="quickTopic('关于边防军事')">边防军事</button>
+                        <button class="quick-btn" onclick="quickTopic('关于民生问题')">民生问题</button>
+                        <button class="quick-btn" onclick="quickTopic('关于科举教育')">科举教育</button>
+                        <button class="quick-btn" onclick="quickTopic('关于工程建设')">工程建设</button>
+                        <button class="quick-btn" onclick="quickTopic('关于法治建设')">法治建设</button>
+                    </div>
+                </div>
+
+                <div class="card">
+                    <h2>🎮 操作</h2>
+                    <button class="btn" onclick="startGroupChat()" style="width: 100%; margin-bottom: 8px;">开始群聊</button>
+                    <button class="btn" onclick="nextSpeaker()" style="width: 100%; margin-bottom: 8px;">下一个发言</button>
+                    <button class="btn" onclick="clearChat()" style="width: 100%;">清空对话</button>
+                </div>
+
+                <div class="card">
+                    <h2>📋 日志控制台</h2>
+                    <div class="log-console" id="logConsole"></div>
+                </div>
+
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const API_BASE = 'http://localhost:3000/api';
+        
+        let worldState = {
+            银两: 500,
+            粮食: 300,
+            民心: 60,
+            军力: 50,
+            稳定度: 70
+        };
+        
+        let isSpeaking = false;
+        let currentSpeaker = null;
+        let chatStarted = false;
+        let currentDepartmentOrder = [];
+        let currentDepartmentIndex = 0;
+
+        function logMessage(level, message) {
+            const logConsole = document.getElementById('logConsole');
+            const logEntry = document.createElement('div');
+            logEntry.className = `log-entry ${level}`;
+            
+            const timestamp = new Date().toLocaleTimeString();
+            logEntry.innerHTML = `<span class="timestamp">${timestamp}</span>[${level.toUpperCase()}] ${message}`;
+            
+            logConsole.appendChild(logEntry);
+            logConsole.scrollTop = logConsole.scrollHeight;
+            
+            // 同时输出到浏览器控制台
+            console[level](message);
+        }
+
+        const agentNames = {
+            'libu': '吏部尚书',
+            'hubu': '户部尚书',
+            'libubu': '礼部尚书',
+            'bingbu': '兵部尚书',
+            'xingbu': '刑部尚书',
+            'gongbu': '工部尚书'
+        };
+
+        async function apiCall(endpoint, method = 'GET', data = null) {
+            const options = {
+                method,
+                headers: { 'Content-Type': 'application/json' }
+            };
+            
+            if (data) {
+                options.body = JSON.stringify(data);
+            }
+            
+            const response = await fetch(`${API_BASE}${endpoint}`, options);
+            return response.json();
+        }
+
+        async function startGroupChat() {
+            try {
+                const result = await apiCall('/group-chat/start', 'POST');
+                if (result.success) {
+                    chatStarted = true;
+                    addSystemMessage('群聊已开始，陛下可以与六部尚书自由交谈。');
+                    updateStatus(false, '等待发言');
+                }
+            } catch (error) {
+                console.error('启动群聊失败:', error);
+            }
+        }
+
+        async function sendPlayerMessage() {
+            const input = document.getElementById('playerInput');
+            const message = input.value.trim();
+            
+            if (!message || isSpeaking) return;
+            
+            input.value = '';
+            addMessage('player', '陛下', message);
+            logMessage('info', `发送玩家消息: ${message}`);
+            
+            try {
+                const result = await apiCall('/group-chat/player-speak', 'POST', {
+                    message: message,
+                    worldState: worldState
+                });
+                
+                logMessage('debug', `服务器响应: ${JSON.stringify(result)}`);
+                
+                if (result.success) {
+                    updateMessageCount();
+                    
+                    if (result.data) {
+                        if (result.data.departmentOrder) {
+                            // 重置部门顺序和索引，开始新一轮讨论
+                            currentDepartmentOrder = result.data.departmentOrder;
+                            currentDepartmentIndex = 0;
+                            logMessage('debug', `新一轮AI排序完成 - departmentOrder: ${currentDepartmentOrder}, length: ${currentDepartmentOrder.length}`);
+                            logMessage('info', `新一轮部门顺序: ${currentDepartmentOrder.map(id => agentNames[id]).join(' → ')}`);
+                            logMessage('info', `主要部门: ${result.data.mainDepartment ? agentNames[result.data.mainDepartment] : '无'}`);
+                            
+                            if (currentDepartmentOrder.length > 0) {
+                                const mainDept = result.data.mainDepartment;
+                                if (mainDept) {
+                                    addSystemMessage(`【新一轮讨论】陛下的问题涉及${agentNames[mainDept]}的职责范围，${agentNames[mainDept]}将首先回答。`);
+                                } else {
+                                    addSystemMessage(`【新一轮讨论】AI已根据当前对话重新排列发言顺序。`);
+                                }
+                            }
+                        }
+                        
+                        // 处理自动触发的agent发言
+                        if (result.data.type === 'auto_agent_speak' && result.data.agentId) {
+                            logMessage('info', `自动触发${agentNames[result.data.agentId]}发言`);
+                            setTimeout(() => {
+                                triggerAgentSpeak(result.data.agentId);
+                            }, 500);
+                        }
+                    }
+                }
+            } catch (error) {
+                logMessage('error', `发送消息失败: ${error.message}`);
+            }
+        }
+
+        async function triggerAgentSpeak(agentId) {
+            if (isSpeaking || !chatStarted) {
+                if (!chatStarted) {
+                    addSystemMessage('请先点击"开始群聊"按钮');
+                }
+                return;
+            }
+            
+            isSpeaking = true;
+            currentSpeaker = agentId;
+            
+            updateAgentStatus(agentId, '发言中...');
+            updateStatus(true, `${agentNames[agentId]}正在发言...`);
+            
+            addTypingIndicator(agentId);
+            
+            try {
+                const result = await apiCall('/group-chat/agent-speak-sync', 'POST', {
+                    agentId: agentId,
+                    topic: '继续讨论',
+                    worldState: worldState
+                });
+                
+                if (result.success) {
+                    removeTypingIndicator();
+                    addMessage('agent', agentNames[agentId], result.data.content);
+                    updateMessageCount();
+                }
+            } catch (error) {
+                logMessage('error', `Agent发言失败: ${error.message}`);
+                removeTypingIndicator();
+                addMessage('agent', agentNames[agentId], '（发言出错）');
+            } finally {
+                isSpeaking = false;
+                currentSpeaker = null;
+                updateAgentStatus(agentId, '待命');
+                updateStatus(false, '等待发言');
+            }
+        }
+
+        function quickTopic(topic) {
+            document.getElementById('playerInput').value = topic;
+            sendPlayerMessage();
+        }
+
+        function addMessage(role, name, content) {
+            const container = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${role}`;
+            
+            const icon = role === 'player' ? '帝' : name.charAt(0);
+            
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <div class="message-avatar">${icon}</div>
+                    <span class="message-name">${name}</span>
+                    <span class="message-time">${new Date().toLocaleTimeString()}</span>
+                </div>
+                <div class="message-content">${content}</div>
+            `;
+            
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function addSystemMessage(content) {
+            const container = document.getElementById('chatMessages');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = 'message agent';
+            messageDiv.innerHTML = `
+                <div class="message-header">
+                    <div class="message-avatar">系</div>
+                    <span class="message-name">系统</span>
+                    <span class="message-time">${new Date().toLocaleTimeString()}</span>
+                </div>
+                <div class="message-content">${content}</div>
+            `;
+            container.appendChild(messageDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function addTypingIndicator(agentId) {
+            const container = document.getElementById('chatMessages');
+            const typingDiv = document.createElement('div');
+            typingDiv.className = 'typing-indicator';
+            typingDiv.id = 'typingIndicator';
+            typingDiv.innerHTML = `
+                <div class="message-avatar" style="margin-right: 10px;">${agentNames[agentId].charAt(0)}</div>
+                <div class="typing-dots">
+                    <span></span>
+                    <span></span>
+                    <span></span>
+                </div>
+                <span style="margin-left: 10px; opacity: 0.7;">${agentNames[agentId]}正在输入...</span>
+            `;
+            container.appendChild(typingDiv);
+            container.scrollTop = container.scrollHeight;
+        }
+
+        function removeTypingIndicator() {
+            const indicator = document.getElementById('typingIndicator');
+            if (indicator) {
+                indicator.remove();
+            }
+        }
+
+        function updateAgentStatus(agentId, status) {
+            const buttons = document.querySelectorAll('.agent-btn');
+            buttons.forEach(btn => {
+                const nameSpan = btn.querySelector('.name');
+                const statusSpan = btn.querySelector('.status');
+                
+                if (nameSpan && nameSpan.textContent === agentNames[agentId]) {
+                    statusSpan.textContent = status;
+                    if (status === '发言中...') {
+                        btn.classList.add('speaking');
+                    } else {
+                        btn.classList.remove('speaking');
+                    }
+                }
+            });
+        }
+
+        function updateStatus(busy, text) {
+            const dot = document.getElementById('statusDot');
+            const statusText = document.getElementById('statusText');
+            
+            if (busy) {
+                dot.classList.add('busy');
+            } else {
+                dot.classList.remove('busy');
+            }
+            
+            statusText.textContent = text;
+        }
+
+        function updateMessageCount() {
+            const messages = document.querySelectorAll('.message');
+            document.getElementById('messageCount').textContent = `消息: ${messages.length}`;
+        }
+
+        async function clearChat() {
+            document.getElementById('chatMessages').innerHTML = '';
+            updateMessageCount();
+            chatStarted = false;
+            
+            addSystemMessage('对话已清空，点击"开始群聊"重新开始。');
+        }
+
+        function nextSpeaker() {
+            logMessage('debug', `nextSpeaker called - currentDepartmentOrder: ${currentDepartmentOrder}, length: ${currentDepartmentOrder.length}, currentDepartmentIndex: ${currentDepartmentIndex}`);
+            
+            if (currentDepartmentOrder.length === 0) {
+                addSystemMessage('请先发送一条消息来确定讨论顺序。');
+                logMessage('warn', 'currentDepartmentOrder is empty');
+                return;
+            }
+            
+            currentDepartmentIndex++;
+            logMessage('debug', `Incremented currentDepartmentIndex to: ${currentDepartmentIndex}`);
+            
+            if (currentDepartmentIndex >= currentDepartmentOrder.length) {
+                addSystemMessage('所有部门都已发言完毕。您可以发送新的消息开始新一轮讨论。');
+                logMessage('info', 'All departments have spoken, resetting index');
+                currentDepartmentIndex = 0;
+                return;
+            }
+            
+            const nextDept = currentDepartmentOrder[currentDepartmentIndex];
+            logMessage('debug', `Next department: ${nextDept} (${agentNames[nextDept]})`);
+            addSystemMessage(`现在轮到${agentNames[nextDept]}发言。`);
+            logMessage('info', `自动触发${agentNames[nextDept]}发言`);
+            
+            // 自动触发下一个部门的发言
+            setTimeout(() => {
+                triggerAgentSpeak(nextDept);
+            }, 500);
+        }
+
+        function handleKeyPress(event) {
+            if (event.key === 'Enter') {
+                sendPlayerMessage();
+            }
+        }
+
+        window.onload = function() {
+            addSystemMessage('欢迎来到六部群聊议事厅！点击"开始群聊"开始与六部尚书交流。');
+            logMessage('info', '群聊系统已加载');
+            logMessage('info', '请点击"开始群聊"开始您的君主之旅');
+        };
+    </script>
+</body>
+</html>

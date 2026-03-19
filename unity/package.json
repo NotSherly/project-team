@@ -1,0 +1,21 @@
+{
+  "name": "com.txai.game",
+  "version": "1.0.0",
+  "displayName": "TXAI Game",
+  "description": "天命：AI君主模拟器 - Unity前端",
+  "unity": "2022.3",
+  "dependencies": {
+    "com.unity.ugui": "1.0.0",
+    "com.unity.modules.unitywebrequest": "1.0.0",
+    "com.unity.modules.jsonserialize": "1.0.0"
+  },
+  "keywords": [
+    "AI",
+    "Game",
+    "Unity"
+  ],
+  "author": {
+    "name": "TXAI Team",
+    "email": "contact@txai.com"
+  }
+}

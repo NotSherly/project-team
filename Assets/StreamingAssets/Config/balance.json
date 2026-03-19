@@ -1,0 +1,34 @@
+{
+  "Balance": {
+    "TaxPolicy": {
+      "MinTaxRate": 0.05,
+      "MaxTaxRate": 0.30,
+      "PublicSupportImpactScale": 40.0
+    },
+    "Monthly": {
+      "BaseTaxIncome": 80,
+      "TaxIncomeMultiplier": 300.0,
+      "GrainConsumption": 30,
+      "HighTaxThreshold": 0.16,
+      "HighTaxSupportDrift": -2.5,
+      "LowTaxSupportDrift": 0.8
+    },
+    "Events": {
+      "LowGrainThreshold": 120,
+      "LowGrainSupportPenalty": 4.0,
+      "LowSupportThreshold": 35.0,
+      "LowSupportGoldPenalty": 25
+    },
+    "Proposals": {
+      "ReliefGrainCost": 60,
+      "ReliefPublicSupportGain": 10.0,
+      "InspectionGoldCost": 15,
+      "InspectionPublicSupportGain": 4.0,
+      "MilitaryBudgetMin": 0,
+      "MilitaryBudgetMax": 500,
+      "MilitaryBudgetStepGoldCost": 10,
+      "IrrigationGoldCost": 50,
+      "IrrigationGrainGain": 40
+    }
+  }
+}
