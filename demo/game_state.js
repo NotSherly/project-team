@@ -32,6 +32,8 @@ class GameState {
         this.subscribers = [];
         this.roundInterval = null;
         this.roundDuration = 60000; // 60秒一个回合
+        this.stateHistory = []; // 状态变更历史记录
+        this.maxHistoryLength = 100; // 最大历史记录长度
     }
     
     // 获取全局状态快照
@@ -39,10 +41,46 @@ class GameState {
         return JSON.parse(JSON.stringify(this.state));
     }
     
+    // 记录状态变更历史
+    recordStateHistory(action, oldState, newState) {
+        const delta = this.calculateDelta(oldState, newState);
+        const historyEntry = {
+            timestamp: new Date().toISOString(),
+            action: action,
+            oldState: oldState,
+            newState: newState,
+            delta: delta,
+            round: this.state.currentRound
+        };
+        
+        this.stateHistory.push(historyEntry);
+        
+        // 限制历史记录长度
+        if (this.stateHistory.length > this.maxHistoryLength) {
+            this.stateHistory.shift();
+        }
+    }
+    
+    // 获取状态历史记录
+    getStateHistory() {
+        return JSON.parse(JSON.stringify(this.stateHistory));
+    }
+    
+    // 获取特定回合的状态历史
+    getStateHistoryByRound(round) {
+        return this.stateHistory.filter(entry => entry.round === round);
+    }
+    
+    // 获取最近的状态历史
+    getRecentStateHistory(limit = 10) {
+        return this.stateHistory.slice(-limit);
+    }
+    
     // 更新状态
     updateState(newState) {
         const oldState = JSON.parse(JSON.stringify(this.state));
         this.state = { ...this.state, ...newState };
+        this.recordStateHistory('updateState', oldState, this.state);
         this.notifySubscribers(oldState, this.state);
     }
     
@@ -50,6 +88,7 @@ class GameState {
     updateValue(key, value) {
         const oldState = JSON.parse(JSON.stringify(this.state));
         this.state[key] = value;
+        this.recordStateHistory(`updateValue: ${key}`, oldState, this.state);
         this.notifySubscribers(oldState, this.state);
     }
     
@@ -59,6 +98,7 @@ class GameState {
         const agentIndex = this.state.agents.findIndex(agent => agent.dept === dept);
         if (agentIndex !== -1) {
             this.state.agents[agentIndex] = { ...this.state.agents[agentIndex], ...updates };
+            this.recordStateHistory(`updateAgent: ${dept}`, oldState, this.state);
             this.notifySubscribers(oldState, this.state);
         }
     }
@@ -68,6 +108,7 @@ class GameState {
         if (!this.state.active_buffs.includes(buffId)) {
             const oldState = JSON.parse(JSON.stringify(this.state));
             this.state.active_buffs.push(buffId);
+            this.recordStateHistory(`addBuff: ${buffId}`, oldState, this.state);
             this.notifySubscribers(oldState, this.state);
         }
     }
@@ -76,6 +117,7 @@ class GameState {
     removeBuff(buffId) {
         const oldState = JSON.parse(JSON.stringify(this.state));
         this.state.active_buffs = this.state.active_buffs.filter(buff => buff !== buffId);
+        this.recordStateHistory(`removeBuff: ${buffId}`, oldState, this.state);
         this.notifySubscribers(oldState, this.state);
     }
     
@@ -84,6 +126,7 @@ class GameState {
         if (!this.state.active_debuffs.includes(debuffId)) {
             const oldState = JSON.parse(JSON.stringify(this.state));
             this.state.active_debuffs.push(debuffId);
+            this.recordStateHistory(`addDebuff: ${debuffId}`, oldState, this.state);
             this.notifySubscribers(oldState, this.state);
         }
     }
@@ -92,6 +135,7 @@ class GameState {
     removeDebuff(debuffId) {
         const oldState = JSON.parse(JSON.stringify(this.state));
         this.state.active_debuffs = this.state.active_debuffs.filter(debuff => debuff !== debuffId);
+        this.recordStateHistory(`removeDebuff: ${debuffId}`, oldState, this.state);
         this.notifySubscribers(oldState, this.state);
     }
     
@@ -106,9 +150,17 @@ class GameState {
     // 通知订阅者
     notifySubscribers(oldState, newState) {
         const delta = this.calculateDelta(oldState, newState);
+        // 添加时间戳和变更类型
+        const notification = {
+            type: "UPDATE_STATS",
+            timestamp: new Date().toISOString(),
+            data: delta,
+            oldState: oldState,
+            newState: newState
+        };
         this.subscribers.forEach(callback => {
             try {
-                callback({ type: "UPDATE_STATS", data: delta });
+                callback(notification);
             } catch (error) {
                 console.error('通知订阅者失败:', error);
             }
@@ -123,22 +175,61 @@ class GameState {
         Object.keys(newState).forEach(key => {
             if (typeof newState[key] !== 'object' || newState[key] === null) {
                 if (oldState[key] !== newState[key]) {
-                    delta[key] = { old: oldState[key], new: newState[key] };
+                    const change = newState[key] - oldState[key];
+                    let percentageChange = 0;
+                    if (oldState[key] !== 0) {
+                        percentageChange = (change / Math.abs(oldState[key])) * 100;
+                    }
+                    delta[key] = {
+                        old: oldState[key],
+                        new: newState[key],
+                        change: change,
+                        percentageChange: parseFloat(percentageChange.toFixed(2))
+                    };
                 }
             }
         });
         
         // 比较agents
         if (JSON.stringify(oldState.agents) !== JSON.stringify(newState.agents)) {
-            delta.agents = newState.agents;
+            const agentChanges = [];
+            newState.agents.forEach((newAgent, index) => {
+                const oldAgent = oldState.agents[index];
+                if (JSON.stringify(newAgent) !== JSON.stringify(oldAgent)) {
+                    const agentDelta = { dept: newAgent.dept, changes: {} };
+                    Object.keys(newAgent).forEach(key => {
+                        if (newAgent[key] !== oldAgent[key]) {
+                            agentDelta.changes[key] = {
+                                old: oldAgent[key],
+                                new: newAgent[key],
+                                change: newAgent[key] - oldAgent[key]
+                            };
+                        }
+                    });
+                    agentChanges.push(agentDelta);
+                }
+            });
+            delta.agents = agentChanges;
         }
         
         // 比较buffs和debuffs
         if (JSON.stringify(oldState.active_buffs) !== JSON.stringify(newState.active_buffs)) {
-            delta.active_buffs = newState.active_buffs;
+            const addedBuffs = newState.active_buffs.filter(buff => !oldState.active_buffs.includes(buff));
+            const removedBuffs = oldState.active_buffs.filter(buff => !newState.active_buffs.includes(buff));
+            delta.active_buffs = {
+                current: newState.active_buffs,
+                added: addedBuffs,
+                removed: removedBuffs
+            };
         }
         if (JSON.stringify(oldState.active_debuffs) !== JSON.stringify(newState.active_debuffs)) {
-            delta.active_debuffs = newState.active_debuffs;
+            const addedDebuffs = newState.active_debuffs.filter(debuff => !oldState.active_debuffs.includes(debuff));
+            const removedDebuffs = oldState.active_debuffs.filter(debuff => !newState.active_debuffs.includes(debuff));
+            delta.active_debuffs = {
+                current: newState.active_debuffs,
+                added: addedDebuffs,
+                removed: removedDebuffs
+            };
         }
         
         return delta;
@@ -221,7 +312,10 @@ class GameState {
         // 7. 生成结果
         results.updated_stats = this.calculateDelta(oldState, this.state);
         
-        // 8. 通知订阅者
+        // 8. 记录状态变更历史
+        this.recordStateHistory('executeRoundEnd', oldState, this.state);
+        
+        // 9. 通知订阅者
         this.notifySubscribers(oldState, this.state);
         
         console.log('回合结束执行完成:', results);
@@ -241,6 +335,7 @@ class GameState {
         this.state.粮食 -= 30;
         this.state.livelihood -= 15;
         this.state.民心 -= 10;
+        this.recordStateHistory('triggerDisaster', oldState, this.state);
         this.notifySubscribers(oldState, this.state);
         return {
             type: "DISASTER",

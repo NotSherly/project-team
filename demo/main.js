@@ -23,7 +23,11 @@ const {
     compressContext,
     getWorldStateHistory,
     rewindToState,
-    getStateDifference
+    getStateDifference,
+    saveGame,
+    loadGame,
+    listSaves,
+    deleteSave
 } = require('./world');
 
 const LibuAgent = require('./agents/libu_agent');
@@ -33,6 +37,7 @@ const BingbuAgent = require('./agents/bingbu_agent');
 const XingbuAgent = require('./agents/xingbu_agent');
 const GongbuAgent = require('./agents/gongbu_agent');
 const NarrativeAgent = require('./agents/narrative_agent');
+const MasterAgent = require('./agents/master_agent');
 const AIService = require('./ai_service');
 const readline = require('readline');
 
@@ -43,6 +48,7 @@ const rl = readline.createInterface({
 
 let gameRunning = true;
 let pendingDecisions = [];
+let masterAgent = null;
 
 const agents = {
     'libu': { agent: null, class: LibuAgent, name: '吏部尚书' },
@@ -57,20 +63,14 @@ function initAgents() {
     for (const key in agents) {
         agents[key].agent = new agents[key].class();
     }
+    masterAgent = new MasterAgent();
 }
 
 async function generateNarrative(worldState) {
-    const narrativeAgent = new NarrativeAgent();
     const events = checkEvents();
     
-    // 使用上下文摘要
-    const contextSummary = getContextSummary('medium');
-    
-    const narrative = await narrativeAgent.generateNarrative(worldState, {
-        report: `当前事件：${events.join('、')}`,
-        options: [],
-        context: contextSummary
-    });
+    // 使用主Agent生成世界线叙事
+    const narrative = await masterAgent.generateWorldLine(worldState, events, pendingDecisions);
     
     return narrative;
 }
@@ -87,7 +87,7 @@ async function generateAllMemorials(worldState) {
         console.log(`\n[${agentData.name}] 正在上奏...`);
         
         agentData.agent.observeWorld(worldState);
-        const memorial = await agentData.agent.act();
+        const memorial = await agentData.agent.act(true); // 启用流式输出
         
         setDepartmentMemorial(key, memorial);
         
@@ -130,9 +130,10 @@ async function displayDepartmentSelection() {
     });
     
     console.log(`\n${departments.length + 1}. 进入下一回合（执行所有决策）`);
-    console.log(`${departments.length + 2}. 结束游戏`);
+    console.log(`${departments.length + 2}. 存档管理`);
+    console.log(`${departments.length + 3}. 结束游戏`);
     
-    return departments.length + 2;
+    return departments.length + 3;
 }
 
 async function interactWithDepartment(departmentId) {
@@ -197,64 +198,41 @@ async function executeAllDecisions() {
     console.log('执行决策');
     console.log('=====================================');
     
-    const aiService = new AIService();
-    
     const decisionsSummary = pendingDecisions.map((d, i) => `${i + 1}. [${d.department}] ${d.action}`).join('\n');
     
     console.log('\n【本回合决策汇总】');
     console.log(decisionsSummary);
     
-    console.log('\n正在让六部尚书分析决策影响...\n');
+    console.log('\n正在让主Agent分析决策影响...\n');
     
-    // 使用压缩上下文
-    const compressedContext = compressContext(800);
-    
-    const prompt = `陛下本回合做出了以下决策：
-
-${decisionsSummary}
-
-${compressedContext}
-
-请综合分析这些决策对国家的影响，并以JSON格式返回各项数值的变化。考虑决策之间的相互影响和综合效果。
-
-请以JSON格式返回数值变化，例如：
-{"银两": -10, "粮食": 20, "民心": 5, "军力": 0, "稳定度": 5, "威望": 3, "文化": 0, "工程": 5, "法律": 0}`;
-
     try {
-        const aiResponse = await aiService.processRequest({
-            type: 'agent_dialogue',
-            content: prompt,
-            systemPrompt: '你是朝廷的决策顾问，负责综合分析皇帝的各项决策对国家的影响。请根据决策内容合理预测数值变化，考虑决策之间的相互影响。',
-            constraints: {
-                maxTokens: 800,
-                temperature: 0.7
-            }
-        });
+        // 使用主Agent分析决策影响
+        const worldState = getWorldState();
+        const changes = await masterAgent.analyzeDecisionImpact(pendingDecisions, worldState);
         
-        console.log('【AI决策分析】');
-        console.log(aiResponse);
+        console.log('\n【主Agent决策分析】');
+        console.log(JSON.stringify(changes, null, 2));
         
-        const jsonMatch = aiResponse.match(/\{[\s\S]*?\}/);
-        if (jsonMatch) {
-            try {
-                const changes = JSON.parse(jsonMatch[0]);
-                
-                console.log('\n【数值变化】');
-                for (const key in changes) {
-                    if (updateWorldValue(key, changes[key])) {
-                        console.log(`  ${key}: ${changes[key] > 0 ? '+' : ''}${changes[key]}`);
-                    }
-                }
-            } catch (parseError) {
-                console.log('  (数值变化解析失败，使用默认逻辑)');
-                applyDefaultDecisions();
+        console.log('\n【数值变化】');
+        for (const key in changes) {
+            if (updateWorldValue(key, changes[key])) {
+                console.log(`  ${key}: ${changes[key] > 0 ? '+' : ''}${changes[key]}`);
             }
-        } else {
-            applyDefaultDecisions();
         }
         
+        // 执行主Agent的数值调控
+        const regulationChanges = masterAgent.regulateWorldValues(getWorldState());
+        if (Object.keys(regulationChanges).length > 0) {
+            console.log('\n【主Agent数值调控】');
+            for (const key in regulationChanges) {
+                if (updateWorldValue(key, regulationChanges[key])) {
+                    console.log(`  ${key}: ${regulationChanges[key] > 0 ? '+' : ''}${regulationChanges[key]}`);
+                }
+            }
+        }
     } catch (error) {
-        console.error('分析决策影响时出错:', error);
+        console.error('主Agent分析失败:', error);
+        console.log('  (分析失败，使用默认逻辑)');
         applyDefaultDecisions();
     }
     
@@ -339,6 +317,117 @@ function getCustomCommand() {
     });
 }
 
+// 获取用户输入
+function getInput() {
+    return new Promise((resolve) => {
+        rl.question('> ', (answer) => {
+            resolve(answer);
+        });
+    });
+}
+
+// 存档管理菜单
+async function handleSaveLoad() {
+    console.log('\n=====================================');
+    console.log('存档管理');
+    console.log('=====================================');
+    console.log('1. 保存游戏');
+    console.log('2. 加载游戏');
+    console.log('3. 列出所有存档');
+    console.log('4. 删除存档');
+    console.log('5. 返回');
+    
+    const choice = await getPlayerChoice(5);
+    
+    switch (choice) {
+        case 1:
+            await handleSave();
+            break;
+        case 2:
+            await handleLoad();
+            break;
+        case 3:
+            handleListSaves();
+            break;
+        case 4:
+            await handleDeleteSave();
+            break;
+        case 5:
+            return;
+    }
+    
+    // 递归调用，直到用户选择返回
+    await handleSaveLoad();
+}
+
+// 保存游戏
+async function handleSave() {
+    console.log('\n请输入存档槽编号 (1-5):');
+    const slot = parseInt(await getInput());
+    
+    if (isNaN(slot) || slot < 1 || slot > 5) {
+        console.log('无效的存档槽编号');
+        return;
+    }
+    
+    console.log('请输入存档描述 (可选):');
+    const description = await getInput();
+    
+    saveGame(slot, description);
+}
+
+// 加载游戏
+async function handleLoad() {
+    console.log('\n请输入存档槽编号 (1-5):');
+    const slot = parseInt(await getInput());
+    
+    if (isNaN(slot) || slot < 1 || slot > 5) {
+        console.log('无效的存档槽编号');
+        return;
+    }
+    
+    const success = loadGame(slot);
+    if (success) {
+        console.log('存档加载成功，返回主菜单');
+        return;
+    }
+}
+
+// 列出所有存档
+function handleListSaves() {
+    console.log('\n=====================================');
+    console.log('存档列表');
+    console.log('=====================================');
+    
+    const saves = listSaves();
+    
+    if (saves.length === 0) {
+        console.log('没有存档');
+        return;
+    }
+    
+    saves.forEach(save => {
+        console.log(`存档槽 ${save.slot}:`);
+        console.log(`  描述: ${save.description}`);
+        console.log(`  时间: ${new Date(save.timestamp).toLocaleString()}`);
+        console.log(`  状态: 银两${save.worldState.银两}，粮食${save.worldState.粮食}，民心${save.worldState.民心}`);
+        console.log('-------------------------------------');
+    });
+}
+
+// 删除存档
+async function handleDeleteSave() {
+    console.log('\n请输入要删除的存档槽编号 (1-5):');
+    const slot = parseInt(await getInput());
+    
+    if (isNaN(slot) || slot < 1 || slot > 5) {
+        console.log('无效的存档槽编号');
+        return;
+    }
+    
+    deleteSave(slot);
+}
+
 async function confirmEndGame() {
     return new Promise((resolve) => {
         rl.question('\n确定要结束游戏吗？(y/n): ', (answer) => {
@@ -397,6 +486,8 @@ async function gameLoop() {
                 await executeAllDecisions();
                 inDepartmentPhase = false;
             } else if (choice === departments.length + 2) {
+                await handleSaveLoad();
+            } else if (choice === departments.length + 3) {
                 const confirmed = await confirmEndGame();
                 if (confirmed) {
                     console.log('\n感谢您的游玩！游戏结束。');

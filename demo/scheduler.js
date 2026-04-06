@@ -223,27 +223,35 @@ class ParallelScheduler {
 
     selectBehaviorType(department, event, gameState) {
         const deptInfo = this.departmentRelations[department];
-        const behaviors = ['扯皮', '支持', '中立'];
+        const behaviors = ['扯皮', '支持', '中立', '协作'];
         
-        let weights = [0.3, 0.3, 0.4];
+        let weights = [0.25, 0.25, 0.3, 0.2];
         
         if (event.type) {
             const relevantDepts = this.getRelevantDepartments(event.type);
             if (relevantDepts.includes(department)) {
-                weights = [0.2, 0.5, 0.3];
+                weights = [0.2, 0.3, 0.2, 0.3]; // 增加支持和协作的权重
             } else {
-                weights = [0.4, 0.2, 0.4];
+                weights = [0.3, 0.2, 0.3, 0.2];
             }
         }
         
         if (event.previousResponses && event.previousResponses.length > 0) {
             const lastResponse = event.previousResponses[event.previousResponses.length - 1];
             if (lastResponse && deptInfo.allies && deptInfo.allies.includes(lastResponse.department)) {
-                weights[1] += 0.2;
+                weights[1] += 0.1; // 增加支持盟友的权重
+                weights[3] += 0.1; // 增加与盟友协作的权重
             }
             if (lastResponse && deptInfo.conflicts && deptInfo.conflicts.includes(lastResponse.department)) {
-                weights[0] += 0.2;
+                weights[0] += 0.1; // 增加与冲突部门扯皮的权重
             }
+        }
+        
+        // 检查是否有协作建议
+        const world = require('./world');
+        const collaborationSuggestions = world.getCollaborationSuggestions(department);
+        if (collaborationSuggestions.length > 0) {
+            weights[3] += 0.1; // 有协作建议时增加协作的权重
         }
         
         const totalWeight = weights.reduce((a, b) => a + b, 0);
@@ -334,6 +342,62 @@ class ParallelScheduler {
 3. 观望表态：表示需要更多信息才能做出判断
 4. 程序性发言：强调需要按照既定程序处理`;
                 break;
+            case 'collaborate':
+                behaviorInstruction = `
+【行为指导 - 协作】
+你可以采取以下策略：
+1. 寻求合作：主动向其他部门提出合作建议
+2. 利益共享：提出互利共赢的合作方案
+3. 资源整合：建议整合各部门资源解决问题
+4. 协调行动：提议各部门协同行动达成目标`;
+                break;
+        }
+        
+        // 导入world模块获取协作建议
+        const world = require('./world');
+        const collaborationSuggestions = world.getCollaborationSuggestions(department);
+        
+        let collaborationInfo = '';
+        if (collaborationSuggestions.length > 0) {
+            collaborationInfo = `
+【协作建议】
+`;
+            collaborationSuggestions.forEach((suggestion, index) => {
+                collaborationInfo += `${index + 1}. ${suggestion.reason}（优先级：${suggestion.priority}）
+`;
+            });
+        }
+        
+        // 获取其他部门的最近决策
+        const recentDecisions = world.getRecentAgentDecisions(3);
+        let otherDecisionsInfo = '';
+        if (recentDecisions.length > 0) {
+            otherDecisionsInfo = `
+【其他部门最近决策】
+`;
+            recentDecisions.forEach((decision, index) => {
+                if (decision.department !== department) {
+                    const decisionContent = typeof decision.decision === 'object' ? 
+                        JSON.stringify(decision.decision).substring(0, 30) : 
+                        decision.decision.substring(0, 30);
+                    otherDecisionsInfo += `${index + 1}. ${decision.department}：${decisionContent}${decisionContent.length > 30 ? '...' : ''}
+`;
+                }
+            });
+        }
+        
+        // 获取其他Agent的消息
+        const unreadMessages = world.getUnreadDepartmentMessages(department);
+        let messagesInfo = '';
+        if (unreadMessages.length > 0) {
+            messagesInfo = `
+【未读消息】
+`;
+            unreadMessages.forEach((msg, index) => {
+                const messageContent = msg.message.substring(0, 30);
+                messagesInfo += `${index + 1}. 来自${msg.fromDepartment}：${messageContent}${msg.message.length > 30 ? '...' : ''}（优先级：${msg.priority}）
+`;
+            });
         }
         
         return `你是${department}尚书，性格：${deptInfo.personality}。
@@ -359,6 +423,9 @@ ${deptInfo.interests.join('、')}
 - 盟友：${deptInfo.allies.join('、')}
 - 潜在冲突：${deptInfo.conflicts.join('、')}
 
+${collaborationInfo}
+${otherDecisionsInfo}
+${messagesInfo}
 ${behaviorInstruction}
 
 【发言要求】
@@ -366,7 +433,7 @@ ${behaviorInstruction}
 2. 保持朝廷礼仪，使用文言文风格
 3. 体现本部门的立场和利益
 4. 根据行为指导选择合适的发言策略
-5. 在发言末尾用【】标记你的行为类型，例如：【扯皮】、【支持】、【中立】
+5. 在发言末尾用【】标记你的行为类型，例如：【扯皮】、【支持】、【中立】、【协作】
 
 请发表你的看法：`;
     }

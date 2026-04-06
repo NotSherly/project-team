@@ -114,7 +114,7 @@ class LibuAgent {
         return '此时';
     }
     
-    async act() {
+    async act(useStreaming = false) {
         const world = this.currentWorld;
         const 奏折要点 = this.think();
         
@@ -126,12 +126,30 @@ class LibuAgent {
         prompt = prompt.replace(/\{\{stability\}\}/g, world.稳定度);
         prompt = prompt.replace(/\{\{prestige\}\}/g, world.威望);
         
-        const 生成的内容 = await this.aiService.processRequest({
-            type: 'agent_dialogue',
-            content: prompt,
-            systemPrompt: this.config.prompts.systemPrompt,
-            constraints: this.config.prompts.constraints
-        });
+        let 生成的内容 = '';
+        
+        if (useStreaming) {
+            console.log(`[${this.config.agent.name}] 流式生成内容中...`);
+            let chunks = '';
+            for await (const chunk of this.aiService.streamProcessRequest({
+                type: 'agent_dialogue',
+                content: prompt,
+                systemPrompt: this.config.prompts.systemPrompt,
+                constraints: this.config.prompts.constraints
+            })) {
+                chunks += chunk;
+                process.stdout.write(chunk); // 实时输出
+            }
+            生成的内容 = chunks;
+            console.log(''); // 换行
+        } else {
+            生成的内容 = await this.aiService.processRequest({
+                type: 'agent_dialogue',
+                content: prompt,
+                systemPrompt: this.config.prompts.systemPrompt,
+                constraints: this.config.prompts.constraints
+            });
+        }
         
         this.memory.push({
             timestamp: new Date().toISOString(),

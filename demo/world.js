@@ -26,9 +26,13 @@ const world = {
     }
 };
 
+const fs = require('fs');
+const path = require('path');
+
 const recentEvents = [];
 const playerActions = [];
 const departmentMemorials = {};
+const agentDecisions = [];
 const eventChain = [];
 const worldStateHistory = [];
 
@@ -310,6 +314,30 @@ function addPlayerAction(action) {
     }
 }
 
+function addAgentDecision(department, decision) {
+    agentDecisions.push({
+        department: department,
+        decision: decision,
+        timestamp: new Date().toISOString()
+    });
+    
+    if (agentDecisions.length > 20) {
+        agentDecisions.shift();
+    }
+}
+
+function getAgentDecisions() {
+    return [...agentDecisions];
+}
+
+function getDepartmentDecisions(department) {
+    return agentDecisions.filter(decision => decision.department === department);
+}
+
+function getRecentAgentDecisions(limit = 10) {
+    return agentDecisions.slice(-limit);
+}
+
 function setDepartmentMemorial(department, memorial) {
     departmentMemorials[department] = {
         report: memorial.report,
@@ -442,7 +470,7 @@ function compressContext(maxTokens = 1000) {
     return compressedContext;
 }
 
-function generateContextSummary(events = recentEvents, actions = playerActions) {
+function generateContextSummary(events = recentEvents, actions = playerActions, decisions = getRecentAgentDecisions(5)) {
     let summary = `当前状态：
 `;
     summary += `朝代：${world.朝代}，年号：${world.年号}，时间：${world.时间}，季节：${world.季节}
@@ -476,6 +504,31 @@ function generateContextSummary(events = recentEvents, actions = playerActions) 
         });
     }
     
+    if (decisions.length > 0) {
+        summary += `
+其他部门决策：
+`;
+        decisions.forEach((decision, index) => {
+            const decisionContent = typeof decision.decision === 'object' ? 
+                JSON.stringify(decision.decision).substring(0, 50) : 
+                decision.decision.substring(0, 50);
+            summary += `${index + 1}. ${decision.department}：${decisionContent}${decisionContent.length > 50 ? '...' : ''}
+`;
+        });
+    }
+    
+    // 添加预算请求状态
+    const pendingRequests = budgetRequests.filter(req => req.status === 'pending');
+    if (pendingRequests.length > 0) {
+        summary += `
+待处理预算请求：
+`;
+        pendingRequests.forEach((req, index) => {
+            summary += `${index + 1}. ${req.department}：${req.purpose}，请求${req.amount}万两
+`;
+        });
+    }
+    
     return summary;
 }
 
@@ -487,12 +540,12 @@ function estimateTokenCount(text) {
 function getContextSummary(importanceLevel = 'high') {
     switch (importanceLevel) {
         case 'low':
-            return generateContextSummary(recentEvents.slice(-1), []);
+            return generateContextSummary(recentEvents.slice(-1), [], getRecentAgentDecisions(2));
         case 'medium':
-            return generateContextSummary(recentEvents.slice(-3), playerActions.slice(-2));
+            return generateContextSummary(recentEvents.slice(-3), playerActions.slice(-2), getRecentAgentDecisions(3));
         case 'high':
         default:
-            return generateContextSummary();
+            return generateContextSummary(recentEvents, playerActions, getRecentAgentDecisions(5));
     }
 }
 
@@ -590,6 +643,417 @@ function getStateDifference(index1, index2) {
     return compareWorldStates(state1, state2);
 }
 
+// 预算协商机制
+const budgetRequests = [];
+
+function submitBudgetRequest(department, amount, purpose) {
+    budgetRequests.push({
+        department: department,
+        amount: amount,
+        purpose: purpose,
+        timestamp: new Date().toISOString(),
+        status: 'pending'
+    });
+    return budgetRequests.length - 1;
+}
+
+function getBudgetRequests() {
+    return [...budgetRequests];
+}
+
+function processBudgetNegotiation() {
+    const pendingRequests = budgetRequests.filter(req => req.status === 'pending');
+    if (pendingRequests.length === 0) {
+        return { success: true, message: '无待处理的预算请求' };
+    }
+    
+    // 计算总请求金额
+    const totalRequested = pendingRequests.reduce((sum, req) => sum + req.amount, 0);
+    const availableFunds = world.国库.储备;
+    
+    let result = {
+        success: true,
+        availableFunds: availableFunds,
+        totalRequested: totalRequested,
+        allocations: [],
+        message: ''
+    };
+    
+    if (totalRequested <= availableFunds) {
+        // 资金充足，全部批准
+        pendingRequests.forEach(req => {
+            req.status = 'approved';
+            result.allocations.push({
+                department: req.department,
+                requested: req.amount,
+                allocated: req.amount,
+                status: 'approved'
+            });
+            // 扣除预算
+            world.国库.储备 -= req.amount;
+            world.国库.支出 += req.amount;
+        });
+        result.message = '所有预算请求已批准';
+    } else {
+        // 资金不足，按优先级分配
+        // 1. 计算每个部门的优先级
+        const prioritizedRequests = pendingRequests.map(req => {
+            let priority = 1;
+            // 根据部门和用途调整优先级
+            if (req.department === '户部') priority = 1.5; // 户部自身优先级较高
+            if (req.department === '工部' && req.purpose.includes('水利')) priority = 1.3; // 水利工程优先级较高
+            if (req.purpose.includes('紧急')) priority = 1.8; // 紧急事项优先级最高
+            return { ...req, priority };
+        });
+        
+        // 按优先级排序
+        prioritizedRequests.sort((a, b) => b.priority - a.priority);
+        
+        let remainingFunds = availableFunds;
+        prioritizedRequests.forEach(req => {
+            if (remainingFunds >= req.amount) {
+                req.status = 'approved';
+                result.allocations.push({
+                    department: req.department,
+                    requested: req.amount,
+                    allocated: req.amount,
+                    status: 'approved'
+                });
+                remainingFunds -= req.amount;
+                world.国库.储备 -= req.amount;
+                world.国库.支出 += req.amount;
+            } else if (remainingFunds > 0) {
+                // 部分批准
+                req.status = 'partially_approved';
+                result.allocations.push({
+                    department: req.department,
+                    requested: req.amount,
+                    allocated: remainingFunds,
+                    status: 'partially_approved'
+                });
+                world.国库.储备 -= remainingFunds;
+                world.国库.支出 += remainingFunds;
+                remainingFunds = 0;
+            } else {
+                req.status = 'denied';
+                result.allocations.push({
+                    department: req.department,
+                    requested: req.amount,
+                    allocated: 0,
+                    status: 'denied'
+                });
+            }
+        });
+        result.message = '资金不足，已按优先级分配';
+    }
+    
+    return result;
+}
+
+function clearBudgetRequests() {
+    budgetRequests.length = 0;
+}
+
+// 部门协作机制
+const collaborationRequests = [];
+
+function submitCollaborationRequest(fromDepartment, toDepartment, request, benefits) {
+    collaborationRequests.push({
+        fromDepartment: fromDepartment,
+        toDepartment: toDepartment,
+        request: request,
+        benefits: benefits,
+        timestamp: new Date().toISOString(),
+        status: 'pending'
+    });
+    return collaborationRequests.length - 1;
+}
+
+function getCollaborationRequests() {
+    return [...collaborationRequests];
+}
+
+function respondToCollaborationRequest(requestId, response, reason) {
+    if (requestId >= 0 && requestId < collaborationRequests.length) {
+        collaborationRequests[requestId].status = response;
+        collaborationRequests[requestId].reason = reason;
+        collaborationRequests[requestId].responseTime = new Date().toISOString();
+        return true;
+    }
+    return false;
+}
+
+function getDepartmentCollaborations(department) {
+    return collaborationRequests.filter(req => 
+        req.fromDepartment === department || req.toDepartment === department
+    );
+}
+
+// 基于部门关系的协作建议
+function getCollaborationSuggestions(department) {
+    const suggestions = [];
+    const deptInfo = {
+        '吏部': { allies: ['礼部', '工部'], conflicts: ['户部', '刑部'] },
+        '户部': { allies: ['吏部', '刑部'], conflicts: ['兵部', '工部'] },
+        '礼部': { allies: ['吏部', '兵部'], conflicts: ['刑部'] },
+        '兵部': { allies: ['工部', '刑部'], conflicts: ['户部', '礼部'] },
+        '刑部': { allies: ['户部', '兵部'], conflicts: ['礼部', '吏部'] },
+        '工部': { allies: ['吏部', '兵部'], conflicts: ['户部'] }
+    };
+    
+    const info = deptInfo[department];
+    if (info) {
+        // 建议与盟友协作
+        info.allies.forEach(ally => {
+            suggestions.push({
+                type: 'collaborate',
+                target: ally,
+                reason: `${ally}是${department}的盟友，建议加强协作`,
+                priority: 'high'
+            });
+        });
+        
+        // 建议与冲突部门缓和关系
+        info.conflicts.forEach(conflict => {
+            suggestions.push({
+                type: 'reconcile',
+                target: conflict,
+                reason: `${conflict}与${department}存在潜在冲突，建议缓和关系`,
+                priority: 'medium'
+            });
+        });
+    }
+    
+    return suggestions;
+}
+
+// 利益交换机制
+function proposeBenefitExchange(fromDepartment, toDepartment, request, offer) {
+    return {
+        fromDepartment: fromDepartment,
+        toDepartment: toDepartment,
+        request: request,
+        offer: offer,
+        timestamp: new Date().toISOString(),
+        status: 'proposed'
+    };
+}
+
+// Agent通信机制
+const agentMessages = [];
+
+function sendAgentMessage(fromDepartment, toDepartment, message, priority = 'normal') {
+    const messageId = `msg_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+    agentMessages.push({
+        id: messageId,
+        fromDepartment: fromDepartment,
+        toDepartment: toDepartment,
+        message: message,
+        priority: priority,
+        timestamp: new Date().toISOString(),
+        status: 'unread'
+    });
+    return messageId;
+}
+
+function getAgentMessages() {
+    return [...agentMessages];
+}
+
+function getDepartmentMessages(department) {
+    return agentMessages.filter(msg => msg.toDepartment === department);
+}
+
+function getUnreadDepartmentMessages(department) {
+    return agentMessages.filter(msg => msg.toDepartment === department && msg.status === 'unread');
+}
+
+function markMessageAsRead(messageId) {
+    const message = agentMessages.find(msg => msg.id === messageId);
+    if (message) {
+        message.status = 'read';
+        message.readAt = new Date().toISOString();
+        return true;
+    }
+    return false;
+}
+
+function markAllDepartmentMessagesAsRead(department) {
+    let count = 0;
+    agentMessages.forEach(msg => {
+        if (msg.toDepartment === department && msg.status === 'unread') {
+            msg.status = 'read';
+            msg.readAt = new Date().toISOString();
+            count++;
+        }
+    });
+    return count;
+}
+
+function deleteMessage(messageId) {
+    const index = agentMessages.findIndex(msg => msg.id === messageId);
+    if (index !== -1) {
+        agentMessages.splice(index, 1);
+        return true;
+    }
+    return false;
+}
+
+function clearDepartmentMessages(department) {
+    const initialLength = agentMessages.length;
+    agentMessages.forEach((msg, index) => {
+        if (msg.fromDepartment === department || msg.toDepartment === department) {
+            agentMessages.splice(index, 1);
+        }
+    });
+    return initialLength - agentMessages.length;
+}
+
+// 存档功能
+function saveGame(slot = 1, description = "") {
+    const saveData = {
+        timestamp: new Date().toISOString(),
+        worldState: { ...world },
+        worldStateHistory: [...worldStateHistory],
+        agentDecisions: [...agentDecisions],
+        playerActions: [...playerActions],
+        recentEvents: [...recentEvents],
+        eventChain: [...eventChain],
+        departmentMemorials: { ...departmentMemorials },
+        budgetRequests: [...budgetRequests],
+        collaborationRequests: [...collaborationRequests],
+        agentMessages: [...agentMessages],
+        description: description
+    };
+
+    const saveDir = path.join(__dirname, 'saves');
+    fs.mkdirSync(saveDir, { recursive: true });
+    const savePath = path.join(saveDir, `save_${slot}.json`);
+    
+    try {
+        fs.writeFileSync(savePath, JSON.stringify(saveData, null, 2));
+        console.log(`游戏已保存到存档槽 ${slot}`);
+        return true;
+    } catch (error) {
+        console.error('保存游戏失败:', error);
+        return false;
+    }
+}
+
+// 读档功能
+function loadGame(slot = 1) {
+    const saveDir = path.join(__dirname, 'saves');
+    const savePath = path.join(saveDir, `save_${slot}.json`);
+    
+    if (!fs.existsSync(savePath)) {
+        console.log(`存档槽 ${slot} 不存在`);
+        return false;
+    }
+
+    try {
+        const saveData = JSON.parse(fs.readFileSync(savePath, 'utf8'));
+        
+        // 恢复世界状态
+        Object.assign(world, saveData.worldState);
+        
+        // 恢复历史记录
+        worldStateHistory.length = 0;
+        worldStateHistory.push(...(saveData.worldStateHistory || []));
+        
+        agentDecisions.length = 0;
+        agentDecisions.push(...(saveData.agentDecisions || []));
+        
+        playerActions.length = 0;
+        playerActions.push(...(saveData.playerActions || []));
+        
+        recentEvents.length = 0;
+        recentEvents.push(...(saveData.recentEvents || []));
+        
+        eventChain.length = 0;
+        eventChain.push(...(saveData.eventChain || []));
+        
+        // 恢复部门奏折
+        Object.keys(departmentMemorials).forEach(key => {
+            delete departmentMemorials[key];
+        });
+        if (saveData.departmentMemorials) {
+            Object.assign(departmentMemorials, saveData.departmentMemorials);
+        }
+        
+        // 恢复预算请求
+        budgetRequests.length = 0;
+        budgetRequests.push(...(saveData.budgetRequests || []));
+        
+        // 恢复协作请求
+        collaborationRequests.length = 0;
+        collaborationRequests.push(...(saveData.collaborationRequests || []));
+        
+        // 恢复Agent消息
+        agentMessages.length = 0;
+        agentMessages.push(...(saveData.agentMessages || []));
+        
+        console.log(`已从存档槽 ${slot} 加载游戏`);
+        console.log(`存档描述: ${saveData.description || '无'}`);
+        console.log(`存档时间: ${new Date(saveData.timestamp).toLocaleString()}`);
+        return true;
+    } catch (error) {
+        console.error('加载游戏失败:', error);
+        return false;
+    }
+}
+
+// 列出所有存档
+function listSaves() {
+    const saveDir = path.join(__dirname, 'saves');
+    if (!fs.existsSync(saveDir)) {
+        console.log('没有存档');
+        return [];
+    }
+
+    const files = fs.readdirSync(saveDir);
+    const saves = [];
+    
+    files.forEach(file => {
+        if (file.match(/^save_\d+\.json$/)) {
+            const slot = parseInt(file.match(/^save_(\d+)\.json$/)[1]);
+            try {
+                const savePath = path.join(saveDir, file);
+                const saveData = JSON.parse(fs.readFileSync(savePath, 'utf8'));
+                saves.push({
+                    slot: slot,
+                    timestamp: saveData.timestamp,
+                    description: saveData.description || '无',
+                    worldState: saveData.worldState
+                });
+            } catch (error) {
+                console.error(`读取存档 ${slot} 失败:`, error);
+            }
+        }
+    });
+    
+    return saves;
+}
+
+// 删除存档
+function deleteSave(slot) {
+    const saveDir = path.join(__dirname, 'saves');
+    const savePath = path.join(saveDir, `save_${slot}.json`);
+    
+    if (fs.existsSync(savePath)) {
+        try {
+            fs.unlinkSync(savePath);
+            console.log(`已删除存档槽 ${slot}`);
+            return true;
+        } catch (error) {
+            console.error('删除存档失败:', error);
+            return false;
+        }
+    } else {
+        console.log(`存档槽 ${slot} 不存在`);
+        return false;
+    }
+}
+
 module.exports = {
     world,
     runWorldTurn,
@@ -598,6 +1062,28 @@ module.exports = {
     processEvent,
     addRecentEvent,
     addPlayerAction,
+    addAgentDecision,
+    getAgentDecisions,
+    getDepartmentDecisions,
+    getRecentAgentDecisions,
+    submitBudgetRequest,
+    getBudgetRequests,
+    processBudgetNegotiation,
+    clearBudgetRequests,
+    submitCollaborationRequest,
+    getCollaborationRequests,
+    respondToCollaborationRequest,
+    getDepartmentCollaborations,
+    getCollaborationSuggestions,
+    proposeBenefitExchange,
+    sendAgentMessage,
+    getAgentMessages,
+    getDepartmentMessages,
+    getUnreadDepartmentMessages,
+    markMessageAsRead,
+    markAllDepartmentMessagesAsRead,
+    deleteMessage,
+    clearDepartmentMessages,
     setDepartmentMemorial,
     getDepartmentMemorial,
     getAllDepartmentMemorials,
@@ -606,6 +1092,10 @@ module.exports = {
     getWorldState,
     getRecentEvents,
     getPlayerActions,
+    saveGame,
+    loadGame,
+    listSaves,
+    deleteSave,
     checkGameEnd,
     getDepartmentList,
     eventChain,

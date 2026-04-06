@@ -4,6 +4,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const OpenAI = require('openai');
 
 // 加载 .env 文件
 function loadEnv() {
@@ -42,8 +43,7 @@ loadEnv();
 class AIService {
     constructor(apiKey) {
         this.apiKey = apiKey || process.env.ARK_API_KEY || process.env.DOUBAO_API_KEY || '';
-        this.apiUrl = process.env.ARK_API_URL || process.env.DOUBAO_API_URL || 'https://ark.cn-beijing.volces.com/api/v3/chat/completions';
-        this.model = process.env.ARK_MODEL || process.env.DOUBAO_MODEL || 'Doubao-Seed-1.6';
+        this.model = process.env.ARK_MODEL || process.env.DOUBAO_MODEL || 'doubao-seed-2-0-pro-260215';
         this.cache = new Map();
         
         this.fallbackModels = [
@@ -57,6 +57,11 @@ class AIService {
         if (!this.apiKey) {
             console.warn('[警告] 未设置 API 密钥，请在项目根目录的 .env 文件中配置 ARK_API_KEY 或 DOUBAO_API_KEY');
         }
+        
+        this.client = new OpenAI({
+            baseURL: 'https://ark.cn-beijing.volces.com/api/v3',
+            apiKey: this.apiKey,
+        });
     }
     
     // 生成缓存键
@@ -101,50 +106,79 @@ class AIService {
         }
     }
     
+    // 流式处理方法
+    async *streamProcessRequest(request) {
+        const cacheKey = this.generateCacheKey(request);
+        
+        // 检查缓存
+        if (this.cache.has(cacheKey)) {
+            console.log(`[LLM] 从缓存获取响应...`);
+            const cachedResponse = this.cache.get(cacheKey);
+            yield cachedResponse;
+            return;
+        }
+
+        // 调用AI引擎
+        try {
+            let fullResponse = '';
+            for await (const chunk of this.streamRequest(request)) {
+                fullResponse += chunk;
+                yield chunk;
+            }
+            // 缓存结果
+            this.cache.set(cacheKey, fullResponse);
+        } catch (error) {
+            console.error('流式处理请求失败:', error);
+            yield this.getFallbackResponse(request);
+        }
+    }
+    
     // 调用AI引擎
     async generate(request, modelIndex = 0) {
         const currentModel = this.fallbackModels[modelIndex] || this.model;
         console.log(`[LLM] 生成内容中... (模型: ${currentModel})`);
-        console.log(`[LLM] API URL: ${this.apiUrl}`);
         console.log(`[LLM] API Key: ${this.apiKey ? '已配置' : '未配置'}`);
         console.log(`[LLM] System Prompt: ${request.systemPrompt}`);
         console.log(`[LLM] User Prompt: ${request.content}`);
         
-        const timeout = request.constraints?.timeout || 30000; // 增加超时时间到30秒
+        const timeout = request.constraints?.timeout || 120000;
         
         try {
             console.log(`[LLM] 发送请求...`);
+            
             const response = await Promise.race([
-                fetch(this.apiUrl, {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json',
-                        'Authorization': `Bearer ${this.apiKey}`
-                    },
-                    body: JSON.stringify({
-                        model: currentModel,
-                        messages: [
-                            {"role": "system","content": request.systemPrompt || "你是一个智能助手，根据用户提供的内容生成相应的回答。"},
-                            {"role": "user","content": request.content}
-                        ],
-                        temperature: request.constraints?.temperature || 0.7,
-                        max_tokens: request.constraints?.maxTokens || 1000
-                    })
+                this.client.responses.create({
+                    model: currentModel,
+                    input: [
+                        {
+                            role: "user",
+                            content: [
+                                {
+                                    type: "input_text",
+                                    text: request.content
+                                }
+                            ]
+                        }
+                    ]
                 }),
                 this.createTimeoutPromise(timeout)
             ]);
             
-            console.log(`[LLM] 收到响应，状态码: ${response.status}`);
+            console.log(`[LLM] 收到响应`);
             
-            const data = await response.json();
-            console.log(`[LLM] 响应数据: ${JSON.stringify(data)}`);
-            
-            if (data && data.choices && data.choices[0] && data.choices[0].message && data.choices[0].message.content) {
+            if (response && response.output_text) {
                 this.recordModelSuccess(currentModel);
-                console.log(`[LLM] 生成成功: ${data.choices[0].message.content.substring(0, 100)}...`);
-                return data.choices[0].message.content;
+                console.log(`[LLM] 生成成功: ${response.output_text.substring(0, 100)}...`);
+                return response.output_text;
+            } else if (response && response.output && response.output.length > 1 && response.output[1].content) {
+                this.recordModelSuccess(currentModel);
+                const content = Array.isArray(response.output[1].content) 
+                    ? response.output[1].content.map(item => item.text || '').join('') 
+                    : response.output[1].content;
+                console.log(`[LLM] 生成成功: ${content.substring(0, 100)}...`);
+                return content;
             } else {
-                console.error('豆包API 响应格式错误:', data);
+                console.error('豆包API 响应格式错误:', response);
                 throw new Error('豆包API 响应格式错误');
             }
         } catch (error) {
@@ -202,57 +236,42 @@ class AIService {
         try {
             console.log(`[LLM] 流式生成内容中...`);
             
-            const response = await fetch(this.apiUrl, {
-                method: 'POST',
-                headers: {
-                    'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${this.apiKey}`
-                },
-                body: JSON.stringify({
-                    model: this.model,
-                    messages: [
-                        {"role": "system","content": request.systemPrompt || "你是一个智能助手，根据用户提供的内容生成相应的回答。"},
-                        {"role": "user","content": request.content}
-                    ],
-                    temperature: request.constraints?.temperature || 0.7,
-                    max_tokens: request.constraints?.maxTokens || 1000,
-                    stream: true
-                })
+            const stream = await this.client.responses.create({
+                model: this.model,
+                input: [
+                    {
+                        role: "user",
+                        content: [
+                            {
+                                type: "input_text",
+                                text: request.content
+                            }
+                        ]
+                    }
+                ],
+                stream: true
             });
             
-            if (!response.ok) {
-                throw new Error(`API请求失败: ${response.status}`);
-            }
-            
-            const reader = response.body;
-            const decoder = new TextDecoder();
-            let buffer = '';
-            
-            for await (const chunk of reader) {
-                buffer += decoder.decode(chunk, { stream: true });
-                
-                const lines = buffer.split('\n');
-                buffer = lines.pop() || '';
-                
-                for (const line of lines) {
-                    const trimmedLine = line.trim();
-                    
-                    if (trimmedLine === '' || trimmedLine === 'data: [DONE]') {
-                        continue;
+            for await (const chunk of stream) {
+                // 处理豆包API的流式响应格式
+                if (chunk.type === 'response.output_text.delta') {
+                    // 实际输出内容的增量
+                    if (chunk.delta) {
+                        yield chunk.delta;
                     }
-                    
-                    if (trimmedLine.startsWith('data: ')) {
-                        try {
-                            const jsonStr = trimmedLine.slice(6);
-                            const data = JSON.parse(jsonStr);
-                            
-                            if (data.choices && data.choices[0] && data.choices[0].delta && data.choices[0].delta.content) {
-                                yield data.choices[0].delta.content;
-                            }
-                        } catch (parseError) {
-                            // 忽略解析错误，继续处理
-                        }
-                    }
+                } else if (chunk.type === 'response.reasoning_summary_text.delta') {
+                    // 思考过程的增量，暂时忽略
+                    // yield chunk.delta; // 如果需要显示思考过程，可以取消注释
+                } else if (chunk.output_text) {
+                    // 完整的输出内容
+                    yield chunk.output_text;
+                } else if (chunk.output && chunk.output.length > 1 && chunk.output[1].content) {
+                    const content = Array.isArray(chunk.output[1].content) 
+                        ? chunk.output[1].content.map(item => item.text || '').join('') 
+                        : chunk.output[1].content;
+                    yield content;
+                } else if (chunk.output && chunk.output[0] && chunk.output[0].content) {
+                    yield chunk.output[0].content;
                 }
             }
             
